@@ -1,0 +1,603 @@
+@import "tailwindcss";
+
+@layer base {
+  :root {
+    --font-display: 'Oswald', system-ui, sans-serif;
+    --font-sans: 'Manrope', system-ui, -apple-system, sans-serif;
+    --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+  }
+
+  html,
+  body,
+  #root {
+    height: 100%;
+    width: 100%;
+    margin: 0;
+    padding: 0;
+    background-color: #090b10;
+    font-family: var(--font-sans);
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+    overscroll-behavior: none;
+  }
+}
+
+.font-display {
+  font-family: var(--font-display);
+}
+
+.font-mono-tech {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Atmospheric animations using compositor-only properties */
+@keyframes hotspot-pulse {
+  0% {
+    transform: scale(0.88);
+    opacity: 0.25;
+  }
+  28% {
+    transform: scale(1.06);
+    opacity: 0.82;
+  }
+  68% {
+    transform: scale(1.42);
+    opacity: 0.18;
+  }
+  100% {
+    transform: scale(1.56);
+    opacity: 0;
+  }
+}
+
+@keyframes laser-ripple {
+  0% {
+    transform: translate(-50%, -50%) scale(0.3);
+    opacity: 1;
+  }
+  100% {
+    transform: translate(-50%, -50%) scale(2.4);
+    opacity: 0;
+  }
+}
+
+@keyframes led-flicker {
+  0%, 100% { opacity: 1; }
+  48% { opacity: 0.98; }
+  50% { opacity: 0.72; }
+  52% { opacity: 1; }
+  84% { opacity: 0.96; }
+  85% { opacity: 0.65; }
+  87% { opacity: 1; }
+}
+
+@keyframes speaker-ring {
+  0% {
+    transform: scale(1);
+    opacity: 0.9;
+  }
+  100% {
+    transform: scale(1.36);
+    opacity: 0;
+  }
+}
+
+@keyframes shake-x {
+  0%, 100% { transform: translateX(0); }
+  20% { transform: translateX(-8px); }
+  40% { transform: translateX(8px); }
+  60% { transform: translateX(-6px); }
+  80% { transform: translateX(6px); }
+}
+
+.animate-hotspot-pulse {
+  animation: hotspot-pulse 2.6s cubic-bezier(0.22, 1, 0.36, 1) infinite;
+}
+
+.animate-laser-ripple {
+  animation: laser-ripple 0.9s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.animate-led-flicker {
+  animation: led-flicker 5.5s linear infinite;
+}
+
+.animate-speaker-ring {
+  animation: speaker-ring 1.25s cubic-bezier(0.16, 1, 0.3, 1) infinite;
+}
+
+.animate-shake {
+  animation: shake-x 0.35s ease-in-out;
+}
+
+/* Subtle gritty night-train static grain & interference overlay */
+@keyframes static-shift {
+  0%, 100% { transform: translate(0, 0); }
+  25% { transform: translate(-1.5%, 1%); }
+  50% { transform: translate(1%, -1.5%); }
+  75% { transform: translate(-1%, -0.5%); }
+}
+
+@keyframes interference-flicker {
+  0%, 92%, 100% { opacity: 0.04; }
+  94% { opacity: 0.11; }
+  96% { opacity: 0.03; }
+  98% { opacity: 0.09; }
+}
+
+.scene-static-grain {
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='1'/%3E%3C/svg%3E");
+  background-size: 180px 180px;
+  opacity: 0.075;
+  mix-blend-mode: overlay;
+  animation: static-shift 0.45s steps(2) infinite;
+}
+
+.scene-interference-lines {
+  background: repeating-linear-gradient(
+    to bottom,
+    rgba(255, 255, 255, 0.06) 0px,
+    rgba(255, 255, 255, 0.06) 1px,
+    transparent 1px,
+    transparent 4px
+  );
+  animation: interference-flicker 6s linear infinite;
+}
+
+.scene-vignette {
+  background: radial-gradient(
+    ellipse at center,
+    rgba(5, 7, 12, 0) 38%,
+    rgba(5, 7, 12, 0.42) 72%,
+    rgba(4, 6, 10, 0.84) 100%
+  );
+}
+
+/* Damaged screen chromatic aberration & RF signal glitch */
+@keyframes chromatic-jitter {
+  0%, 100% {
+    transform: translate3d(0, 0, 0);
+  }
+  20% {
+    transform: translate3d(-1.5px, 0.5px, 0);
+  }
+  45% {
+    transform: translate3d(1.5px, -0.5px, 0);
+  }
+  70% {
+    transform: translate3d(-1px, 0, 0);
+  }
+  85% {
+    transform: translate3d(1px, 0.5px, 0);
+  }
+}
+
+@keyframes glitch-band {
+  0%, 100% {
+    transform: translateY(-20%);
+    opacity: 0;
+  }
+  15% {
+    opacity: 0.42;
+  }
+  50% {
+    transform: translateY(115%);
+    opacity: 0.25;
+  }
+  51%, 99% {
+    opacity: 0;
+  }
+}
+
+.scene-aberration-idle {
+  filter: contrast(1.02) saturate(0.98);
+  transition: filter 180ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.scene-aberration-data {
+  filter: url(#chromatic-aberration-data) contrast(1.07) saturate(1.14)
+    drop-shadow(-2px 0 0 rgba(255, 36, 76, 0.35))
+    drop-shadow(2px 0 0 rgba(34, 211, 238, 0.35));
+  animation: chromatic-jitter 0.28s steps(2) infinite;
+  transition: filter 120ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.scene-aberration-radio {
+  filter: url(#chromatic-aberration-radio) contrast(1.12) saturate(1.22)
+    drop-shadow(-3.5px 0 0 rgba(255, 36, 76, 0.52))
+    drop-shadow(3.5px 0 0 rgba(34, 211, 238, 0.52));
+  animation: chromatic-jitter 0.18s steps(2) infinite;
+  transition: filter 100ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.scene-rgb-fringe-idle {
+  box-shadow:
+    inset 2px 0 18px rgba(239, 68, 68, 0.08),
+    inset -2px 0 18px rgba(34, 211, 238, 0.08);
+  opacity: 0.55;
+  transition: opacity 180ms ease, box-shadow 180ms ease;
+}
+
+.scene-rgb-fringe-data {
+  box-shadow:
+    inset 6px 0 28px rgba(239, 68, 68, 0.26),
+    inset -6px 0 28px rgba(34, 211, 238, 0.26);
+  opacity: 0.9;
+  transition: opacity 120ms ease, box-shadow 120ms ease;
+}
+
+.scene-rgb-fringe-radio {
+  box-shadow:
+    inset 11px 0 42px rgba(239, 68, 68, 0.42),
+    inset -11px 0 42px rgba(34, 211, 238, 0.42);
+  opacity: 1;
+  transition: opacity 100ms ease, box-shadow 100ms ease;
+}
+
+.scene-glitch-tear {
+  background: linear-gradient(
+    to bottom,
+    transparent 0%,
+    rgba(239, 68, 68, 0.16) 28%,
+    rgba(255, 255, 255, 0.14) 50%,
+    rgba(34, 211, 238, 0.18) 72%,
+    transparent 100%
+  );
+  animation: glitch-band 1.4s linear infinite;
+}
+
+/* Subtle train vibration tremor for the top-left Train Status widget */
+@keyframes train-tremor {
+  0%, 100% { transform: translate3d(0, 0, 0); }
+  20% { transform: translate3d(0.6px, -0.5px, 0); }
+  40% { transform: translate3d(-0.6px, 0.5px, 0); }
+  60% { transform: translate3d(0.5px, 0.4px, 0); }
+  80% { transform: translate3d(-0.5px, -0.4px, 0); }
+}
+
+.animate-train-tremor {
+  animation: train-tremor 0.24s linear infinite;
+}
+
+.animate-train-tremor-soft {
+  animation: train-tremor 0.55s linear infinite;
+}
+
+/* Remote P2 -> P1 scene component effects */
+@keyframes cabin-light-strobe {
+  0%, 100% { opacity: 0.08; }
+  8% { opacity: 0.85; }
+  14% { opacity: 0.12; }
+  22% { opacity: 0.92; }
+  34% { opacity: 0.05; }
+  52% { opacity: 0.78; }
+  60% { opacity: 0.1; }
+  76% { opacity: 0.88; }
+  84% { opacity: 0.14; }
+}
+
+@keyframes cabin-alarm-pulse {
+  0%, 100% { opacity: 0.12; }
+  50% { opacity: 0.65; }
+}
+
+@keyframes cabin-power-surge {
+  0% { opacity: 0.1; }
+  15% { opacity: 0.88; }
+  30% { opacity: 0.4; }
+  45% { opacity: 0.92; }
+  70% { opacity: 0.25; }
+  100% { opacity: 0.05; }
+}
+
+.remote-effect-light {
+  background: radial-gradient(circle at 50% 15%, rgba(254, 240, 138, 0.38), rgba(5, 7, 12, 0.72) 78%);
+  animation: cabin-light-strobe 0.95s steps(2) infinite;
+}
+
+.remote-effect-alarm {
+  background: radial-gradient(circle at 32% 45%, rgba(239, 68, 68, 0.52), rgba(127, 29, 29, 0.28) 55%, transparent 88%);
+  animation: cabin-alarm-pulse 0.75s ease-in-out infinite;
+}
+
+.remote-effect-surge {
+  background: radial-gradient(circle at 56% 52%, rgba(56, 189, 248, 0.45), rgba(6, 8, 14, 0.86) 65%);
+  animation: cabin-power-surge 0.8s linear infinite;
+}
+
+.remote-effect-ping {
+  background: radial-gradient(circle at 42% 48%, rgba(251, 191, 36, 0.42), rgba(245, 158, 11, 0.1) 50%, transparent 78%);
+  animation: cabin-alarm-pulse 0.9s ease-in-out infinite;
+}
+
+/* Radio overheat warning frame after 10s continuous PTT transmission */
+@keyframes radio-overheat-pulse {
+  0%, 100% {
+    opacity: 0.72;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+.radio-overheat-frame {
+  border: 3px solid rgba(239, 68, 68, 0.85);
+  box-shadow:
+    inset 0 0 38px rgba(220, 38, 38, 0.62),
+    inset 0 0 110px rgba(153, 27, 27, 0.42);
+  animation: radio-overheat-pulse 0.85s ease-in-out infinite;
+}
+
+/* Random screen-wide RF scanlines interference during active PTT or low radio battery */
+@keyframes scanlines-scroll {
+  0% {
+    transform: translate3d(0, 0, 0);
+  }
+  100% {
+    transform: translate3d(0, 12px, 0);
+  }
+}
+
+@keyframes scanline-sweep {
+  0% {
+    transform: translate3d(0, -18vh, 0);
+    opacity: 0;
+  }
+  12% {
+    opacity: 0.72;
+  }
+  82% {
+    opacity: 0.45;
+  }
+  100% {
+    transform: translate3d(0, 118vh, 0);
+    opacity: 0;
+  }
+}
+
+@keyframes scanlines-flicker {
+  0%, 100% {
+    opacity: 0.88;
+  }
+  30% {
+    opacity: 0.52;
+  }
+  55% {
+    opacity: 1;
+  }
+  80% {
+    opacity: 0.66;
+  }
+}
+
+.screen-scanlines-grid {
+  background: repeating-linear-gradient(
+    to bottom,
+    rgba(0, 0, 0, 0.36) 0px,
+    rgba(0, 0, 0, 0.36) 1px,
+    rgba(186, 230, 253, 0.06) 1px,
+    rgba(186, 230, 253, 0.06) 2px,
+    transparent 2px,
+    transparent 4px
+  );
+  animation:
+    scanlines-scroll 0.24s linear infinite,
+    scanlines-flicker 0.32s steps(2) infinite;
+}
+
+.screen-scanlines-grid-lowbat {
+  background: repeating-linear-gradient(
+    to bottom,
+    rgba(0, 0, 0, 0.42) 0px,
+    rgba(0, 0, 0, 0.42) 1px,
+    rgba(251, 191, 36, 0.07) 1px,
+    rgba(251, 191, 36, 0.07) 2px,
+    transparent 2px,
+    transparent 4px
+  );
+  animation:
+    scanlines-scroll 0.19s linear infinite,
+    scanlines-flicker 0.26s steps(2) infinite;
+}
+
+.screen-scanlines-beam {
+  background: linear-gradient(
+    to bottom,
+    transparent 0%,
+    rgba(56, 189, 248, 0.09) 28%,
+    rgba(255, 255, 255, 0.17) 50%,
+    rgba(56, 189, 248, 0.08) 72%,
+    transparent 100%
+  );
+  animation: scanline-sweep 0.55s cubic-bezier(0.22, 1, 0.36, 1) infinite;
+}
+
+.screen-scanlines-beam-lowbat {
+  background: linear-gradient(
+    to bottom,
+    transparent 0%,
+    rgba(245, 158, 11, 0.12) 28%,
+    rgba(254, 226, 226, 0.16) 50%,
+    rgba(239, 68, 68, 0.12) 72%,
+    transparent 100%
+  );
+  animation: scanline-sweep 0.46s cubic-bezier(0.22, 1, 0.36, 1) infinite;
+}
+
+/* Post-completion train smoke ('задимлення') drifting semi-transparent gradients */
+@keyframes smoke-drift-a {
+  0% {
+    transform: translate3d(-10%, 8%, 0) scale(1.08);
+    opacity: 0.46;
+  }
+  50% {
+    transform: translate3d(8%, -5%, 0) scale(1.16);
+    opacity: 0.78;
+  }
+  100% {
+    transform: translate3d(-10%, 8%, 0) scale(1.08);
+    opacity: 0.46;
+  }
+}
+
+@keyframes smoke-drift-b {
+  0% {
+    transform: translate3d(10%, 6%, 0) scale(1.14);
+    opacity: 0.38;
+  }
+  50% {
+    transform: translate3d(-9%, -8%, 0) scale(1.05);
+    opacity: 0.68;
+  }
+  100% {
+    transform: translate3d(10%, 6%, 0) scale(1.14);
+    opacity: 0.38;
+  }
+}
+
+@keyframes smoke-rise {
+  0% {
+    transform: translate3d(0, 10%, 0);
+    opacity: 0.35;
+  }
+  50% {
+    transform: translate3d(0, -6%, 0);
+    opacity: 0.62;
+  }
+  100% {
+    transform: translate3d(0, 10%, 0);
+    opacity: 0.35;
+  }
+}
+
+.scene-smoke-layer-a {
+  background:
+    radial-gradient(ellipse 58% 46% at 24% 72%, rgba(203, 213, 225, 0.32), rgba(148, 163, 184, 0.14) 45%, transparent 74%),
+    radial-gradient(ellipse 52% 44% at 76% 36%, rgba(186, 198, 214, 0.28), rgba(100, 116, 139, 0.12) 48%, transparent 76%),
+    radial-gradient(ellipse 65% 40% at 50% 88%, rgba(226, 232, 240, 0.24), transparent 72%);
+  animation: smoke-drift-a 14s ease-in-out infinite;
+}
+
+.scene-smoke-layer-b {
+  background:
+    radial-gradient(ellipse 56% 48% at 72% 76%, rgba(226, 232, 240, 0.28), rgba(148, 163, 184, 0.12) 44%, transparent 74%),
+    radial-gradient(ellipse 48% 42% at 28% 30%, rgba(203, 213, 225, 0.24), rgba(239, 68, 68, 0.07) 52%, transparent 78%),
+    linear-gradient(125deg, rgba(148, 163, 184, 0.14) 0%, transparent 45%, rgba(203, 213, 225, 0.18) 100%);
+  animation: smoke-drift-b 18s ease-in-out infinite;
+}
+
+.scene-smoke-rise {
+  background: linear-gradient(
+    to top,
+    rgba(148, 163, 184, 0.36) 0%,
+    rgba(203, 213, 225, 0.2) 34%,
+    rgba(248, 113, 113, 0.08) 62%,
+    transparent 100%
+  );
+  animation: smoke-rise 11s ease-in-out infinite;
+}
+
+/* Emergency Siren synchronized red UI & viewport flashing */
+@keyframes siren-screen-strobe {
+  0%, 100% {
+    opacity: 0.22;
+  }
+  50% {
+    opacity: 0.96;
+  }
+}
+
+@keyframes siren-hud-pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.42;
+  }
+}
+
+.siren-screen-flash {
+  border: 4px solid rgba(239, 68, 68, 0.92);
+  background: radial-gradient(
+    ellipse at center,
+    transparent 48%,
+    rgba(220, 38, 38, 0.26) 82%,
+    rgba(185, 28, 28, 0.52) 100%
+  );
+  box-shadow:
+    inset 0 0 46px rgba(239, 68, 68, 0.72),
+    inset 0 0 130px rgba(153, 27, 27, 0.45);
+  animation: siren-screen-strobe 0.56s ease-in-out infinite;
+}
+
+.animate-siren-flash {
+  animation: siren-hud-pulse 0.52s ease-in-out infinite;
+}
+
+/* Radio 'Searching for network' sequential bar scan & radar beacon animations */
+@keyframes radio-bar-scan {
+  0%, 100% {
+    transform: scaleY(0.32);
+    opacity: 0.25;
+  }
+  40% {
+    transform: scaleY(1);
+    opacity: 1;
+  }
+  75% {
+    transform: scaleY(0.45);
+    opacity: 0.4;
+  }
+}
+
+@keyframes radio-radar-ping {
+  0% {
+    transform: scale(0.75);
+    opacity: 0.85;
+  }
+  100% {
+    transform: scale(2.1);
+    opacity: 0;
+  }
+}
+
+.animate-radio-search-bar {
+  transform-origin: bottom center;
+  animation: radio-bar-scan 1.05s ease-in-out infinite;
+}
+
+.animate-radio-radar {
+  animation: radio-radar-ping 1.3s cubic-bezier(0.16, 1, 0.3, 1) infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-hotspot-pulse,
+  .animate-led-flicker,
+  .animate-speaker-ring,
+  .scene-static-grain,
+  .scene-interference-lines,
+  .scene-aberration-data,
+  .scene-aberration-radio,
+  .scene-glitch-tear,
+  .animate-train-tremor,
+  .animate-train-tremor-soft,
+  .remote-effect-light,
+  .remote-effect-alarm,
+  .remote-effect-surge,
+  .remote-effect-ping,
+  .radio-overheat-frame,
+  .screen-scanlines-grid,
+  .screen-scanlines-grid-lowbat,
+  .screen-scanlines-beam,
+  .screen-scanlines-beam-lowbat,
+  .scene-smoke-layer-a,
+  .scene-smoke-layer-b,
+  .scene-smoke-rise,
+  .siren-screen-flash,
+  .animate-siren-flash,
+  .animate-radio-search-bar,
+  .animate-radio-radar {
+    animation: none;
+  }
+}

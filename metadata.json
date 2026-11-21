@@ -1,0 +1,6 @@
+{
+  "name": "Останній рейс S2 — Кооперативний квест",
+  "description": "Кооперативна 2D квест-кімната для двох гравців із рацією Push-to-Talk у нічному потязі S-Bahn S2 Штутгарта.",
+  "requestFramePermissions": ["microphone"],
+  "majorCapabilities": []
+}
