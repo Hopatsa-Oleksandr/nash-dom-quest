@@ -78,9 +78,9 @@ export const SceneArtwork: React.FC<SceneArtworkProps> = ({
     </div>
   );
 
-  // Remote commands from P2 visibly target P1's wagon (and shared scene 1)
+  // Remote commands from Carriage B (p1) visibly target Vestibule A (p2) and shared Scene 1
   const showRemoteEffect =
-    Boolean(remoteEffect) && (playerRole === 'p1' || view.illustrationId === 'scene1-shared');
+    Boolean(remoteEffect) && (playerRole === 'p2' || view.illustrationId === 'scene1-shared');
 
   const remoteOverlayClass =
     showRemoteEffect && remoteEffect
@@ -161,6 +161,8 @@ export const SceneArtwork: React.FC<SceneArtworkProps> = ({
   const fuseTaken = gameState.solvedHotspots.includes('hs-luggage-rack');
   const hatchOpened = gameState.solvedHotspots.includes('hs-seat-hatch');
   const trashTaken = gameState.solvedHotspots.includes('hs-trashbin');
+  const clueRead = gameState.scene1.clueRead;
+  const hatchHasItem = Boolean(gameState.transferHatchItem);
 
   return (
     <div className="absolute inset-0 w-full h-full overflow-hidden bg-[#090b10] select-none pointer-events-none">
@@ -377,8 +379,8 @@ export const SceneArtwork: React.FC<SceneArtworkProps> = ({
             <rect width="102" height="66" rx="6" fill="#2c313b" stroke="#64748b" strokeWidth="2" />
             <rect x="6" y="6" width="90" height="12" rx="2" fill="#181b22" />
             <line x1="16" y1="36" x2="86" y2="36" stroke="#475569" strokeWidth="2" />
-            {/* Glint of screwdriver handle peeking out if not yet taken */}
-            {!trashTaken && (
+            {/* Glint of screwdriver handle peeking out only after reading conductor SMS */}
+            {clueRead && !trashTaken && (
               <path d="M64 14 L78 4 L84 9 L70 18 Z" fill="#dc2626" stroke="#fca5a5" strokeWidth="1" />
             )}
           </g>
@@ -488,7 +490,7 @@ export const SceneArtwork: React.FC<SceneArtworkProps> = ({
         </svg>
       )}
 
-      {view.illustrationId === 'scene2-p1' && (
+      {view.illustrationId === 'scene2-p2' && (
         <svg
           viewBox="0 0 1600 900"
           preserveAspectRatio="xMidYMid slice"
@@ -515,7 +517,7 @@ export const SceneArtwork: React.FC<SceneArtworkProps> = ({
             </radialGradient>
           </defs>
 
-          {/* Vestibule Bulkhead Background */}
+          {/* Vestibule A Bulkhead Background (p2) */}
           <rect width="1600" height="900" fill="url(#p1Wall)" />
           {/* Ceiling strip */}
           <rect x="0" y="0" width="1600" height="125" fill="#141820" />
@@ -527,30 +529,40 @@ export const SceneArtwork: React.FC<SceneArtworkProps> = ({
           {/* LEFT: Sealed Red Emergency Door with dark window */}
           <rect x="0" y="125" width="285" height="575" fill="url(#p1RedDoor)" stroke="#290707" strokeWidth="4" />
           <rect x="52" y="195" width="175" height="275" rx="18" fill="#070d1a" stroke="#18181b" strokeWidth="10" />
-          {/* Rain streaks / frost on glass */}
           <line x1="90" y1="220" x2="80" y2="275" stroke="#94a3b8" strokeWidth="1.5" opacity="0.25" />
           <line x1="160" y1="255" x2="148" y2="335" stroke="#94a3b8" strokeWidth="1.5" opacity="0.2" />
           <text x="140" y="540" fill="#fecaca" fontSize="15" fontWeight="700" textAnchor="middle" fontFamily="monospace" opacity="0.8">
             GESPERRT · ЗАБЛОКОВАНО
           </text>
 
-          {/* Pneumatic Transfer Chute ("ШЛЮЗ ПЕРЕДАЧІ") between cars */}
+          {/* Pneumatic Transfer Chute ("ШЛЮЗ ПЕРЕДАЧІ") between cars (Hotspot x:9%, y:69%) */}
           <g transform="translate(65, 585)">
-            <rect width="150" height="72" rx="8" fill="#181c24" stroke="#38bdf8" strokeWidth="2" opacity="0.9" />
-            <rect x="14" y="14" width="122" height="28" rx="4" fill="#090c12" stroke="#334155" strokeWidth="1.5" />
-            <text x="75" y="59" fill="#7dd3fc" fontSize="11" fontWeight="700" textAnchor="middle" fontFamily="monospace">
-              ШЛЮЗ ПЕРЕДАЧІ
+            <rect
+              width="156"
+              height="76"
+              rx="8"
+              fill={hatchHasItem ? '#062c22' : '#181c24'}
+              stroke={hatchHasItem ? '#34d399' : '#38bdf8'}
+              strokeWidth={hatchHasItem ? '3' : '2'}
+              opacity="0.95"
+            />
+            <rect x="14" y="14" width="128" height="28" rx="4" fill="#090c12" stroke={hatchHasItem ? '#10b981' : '#334155'} strokeWidth="1.5" />
+            {hatchHasItem && (
+              <rect x="46" y="21" width="64" height="14" rx="3" fill="#f59e0b" stroke="#fef08a" strokeWidth="1.2" />
+            )}
+            <text x="78" y="61" fill={hatchHasItem ? '#6ee7b7' : '#7dd3fc'} fontSize="11" fontWeight="700" textAnchor="middle" fontFamily="monospace">
+              {hatchHasItem ? 'ОТРИМАНО ПРЕДМЕТ!' : 'ШЛЮЗ ПЕРЕДАЧІ'}
             </text>
           </g>
 
-          {/* CENTER-LEFT: RED NOTBREMSE EMERGENCY BOX + KEYPAD (Hotspot x:31%, y:48% -> 496, 432) */}
+          {/* CENTER-LEFT: RED NOTBREMSE EMERGENCY BOX + KEYPAD (Hotspot x:31%, y:48%) */}
           <g transform="translate(382, 295)">
             <rect width="228" height="272" rx="12" fill="#991b1b" stroke="#f87171" strokeWidth="3" />
             <rect x="14" y="14" width="200" height="40" rx="6" fill="#450a0a" />
             <text x="114" y="40" fill="#fef2f2" fontSize="22" fontWeight="800" textAnchor="middle" fontFamily="Oswald, sans-serif" letterSpacing="2">
               NOTBREMSE
             </text>
-            {/* Digital LCD screen */}
+            {/* Digital LCD screen — NEVER leaks code before solved */}
             <rect x="24" y="70" width="180" height="52" rx="6" fill="#090d12" stroke="#52525b" strokeWidth="2" />
             <text
               x="114"
@@ -561,9 +573,9 @@ export const SceneArtwork: React.FC<SceneArtworkProps> = ({
               textAnchor="middle"
               fontFamily="monospace"
             >
-              {keypadSolved ? '4719 · OK' : '----'}
+              {keypadSolved ? 'OK · ВІДКР.' : '----'}
             </text>
-            {/* Tactile 3x4 keypad grid */}
+            {/* Tactile 3x3 keypad grid */}
             {[0, 1, 2].map((row) =>
               [0, 1, 2].map((col) => (
                 <rect
@@ -579,22 +591,18 @@ export const SceneArtwork: React.FC<SceneArtworkProps> = ({
                 />
               ))
             )}
-            {/* Status LED */}
             <circle cx="192" cy="34" r="6" fill={keypadSolved ? '#10b981' : '#ef4444'} />
           </g>
 
-          {/* CENTER-RIGHT: FUSE PANEL / ЩИТОК ЗАПОБІЖНИКІВ (Hotspot x:56%, y:54% -> 896, 486) */}
+          {/* CENTER-RIGHT: FUSE PANEL / ЩИТОК SICHERUNG 32A (Hotspot x:56%, y:54%) */}
           <g transform="translate(790, 368)">
             <rect width="212" height="232" rx="10" fill="#272e3a" stroke="#64748b" strokeWidth="3" />
             <rect x="16" y="14" width="180" height="28" rx="4" fill="#181c24" />
             <text x="106" y="32" fill="#e2e8f0" fontSize="13" fontWeight="700" textAnchor="middle" fontFamily="monospace">
               SICHERUNG · 32A
             </text>
-            {/* Inner recessed bay */}
             <rect x="22" y="54" width="168" height="156" rx="6" fill="#11151d" stroke="#334155" strokeWidth="2" />
-            {/* Wiring traces */}
             <path d="M52 132 H160" stroke={fuseInserted ? '#34d399' : '#475569'} strokeWidth="4" />
-            {/* Fuse clips */}
             <rect x="44" y="112" width="18" height="40" rx="3" fill="#ca8a04" />
             <rect x="150" y="112" width="18" height="40" rx="3" fill="#ca8a04" />
             {fuseInserted ? (
@@ -612,33 +620,29 @@ export const SceneArtwork: React.FC<SceneArtworkProps> = ({
             )}
           </g>
 
-          {/* RIGHT: EMERGENCY LEVER A (Hotspot x:78%, y:52% -> 1248, 468) */}
+          {/* RIGHT: EMERGENCY LEVER A (Hotspot x:78%, y:52%) */}
           <g transform="translate(1152, 318)">
             <rect width="192" height="300" rx="12" fill="#1e2430" stroke="#64748b" strokeWidth="3" />
             <rect x="10" y="10" width="172" height="24" rx="4" fill="url(#hazardStripes)" />
             <text x="96" y="56" fill="#f8fafc" fontSize="16" fontWeight="800" textAnchor="middle" fontFamily="Oswald, sans-serif" letterSpacing="1.5">
               ВАЖІЛЬ А
             </text>
-            {/* Lever track slot */}
             <rect x="82" y="76" width="28" height="170" rx="14" fill="#090c12" stroke="#475569" strokeWidth="2" />
-            {/* Lever handle (moves down when p1 holds!) */}
-            <g transform={`translate(0, ${gameState.leverHold.p1 ? 82 : 0})`}>
+            <g transform={`translate(0, ${gameState.leverHold.p2 ? 82 : 0})`}>
               <rect x="89" y="92" width="14" height="58" rx="6" fill="#94a3b8" />
               <rect x="34" y="88" width="124" height="34" rx="10" fill={keypadSolved && fuseInserted ? '#dc2626' : '#64748b'} stroke="#fca5a5" strokeWidth="2.5" />
               <text x="96" y="110" fill="#ffffff" fontSize="13" fontWeight="800" textAnchor="middle" fontFamily="monospace">
-                {gameState.leverHold.p1 ? 'ТРИМАЮ!' : 'ТЯГНИ ВНИЗ'}
+                {gameState.leverHold.p2 ? 'ТРИМАЮ!' : 'ТЯГНИ ВНИЗ'}
               </text>
             </g>
-            {/* Ready status light */}
             <circle cx="96" cy="272" r="9" fill={keypadSolved && fuseInserted ? '#10b981' : '#ef4444'} />
           </g>
 
-          {/* Ambient red emergency glow */}
           <rect width="1600" height="900" fill="url(#redAlarmWash)" />
         </svg>
       )}
 
-      {view.illustrationId === 'scene2-p2' && (
+      {view.illustrationId === 'scene2-p1' && (
         <svg
           viewBox="0 0 1600 900"
           preserveAspectRatio="xMidYMid slice"
@@ -673,13 +677,12 @@ export const SceneArtwork: React.FC<SceneArtworkProps> = ({
             </radialGradient>
           </defs>
 
+          {/* Carriage B Interior (p1) */}
           <rect width="1600" height="900" fill="url(#p2Cabin)" />
-          {/* Curved ceiling */}
           <path d="M0 0 H1600 V135 Q800 95 0 135 Z" fill="#171b24" />
-          {/* Floor */}
           <rect x="0" y="690" width="1600" height="210" fill="#0f1218" />
 
-          {/* CENTER-TOP: OVERHEAD S-BAHN LED MATRIX DISPLAY (Hotspot x:48%, y:23% -> 768, 207) */}
+          {/* CENTER-TOP: OVERHEAD S-BAHN LED MATRIX DISPLAY (Hotspot x:48%, y:23%) */}
           <g transform="translate(462, 138)">
             <rect width="612" height="132" rx="12" fill="#11141b" stroke="#475569" strokeWidth="4" />
             <rect x="16" y="16" width="580" height="100" rx="6" fill="#07090d" stroke="#1e293b" strokeWidth="2" />
@@ -693,15 +696,12 @@ export const SceneArtwork: React.FC<SceneArtworkProps> = ({
             </g>
           </g>
 
-          {/* LEFT: OVERHEAD LUGGAGE RACK WITH FUSE (Hotspot x:24%, y:35% -> 384, 315) */}
+          {/* LEFT: OVERHEAD LUGGAGE RACK WITH FUSE 32A (Hotspot x:24%, y:35%) */}
           <g transform="translate(105, 290)">
-            {/* Wall mounting brackets */}
             <rect x="30" y="34" width="14" height="32" fill="#334155" />
             <rect x="440" y="34" width="14" height="32" fill="#334155" />
-            {/* Perforated shelf */}
             <rect width="486" height="42" rx="6" fill="#3f4756" stroke="#64748b" strokeWidth="2" />
             <rect x="12" y="8" width="462" height="24" fill="url(#p2Perf)" />
-            {/* Ceramic Fuse sitting on the rack if not yet picked up */}
             {!fuseTaken && (
               <g transform="translate(242, -16)">
                 <ellipse cx="38" cy="24" rx="46" ry="18" fill="#fbbf24" opacity="0.22" />
@@ -724,24 +724,32 @@ export const SceneArtwork: React.FC<SceneArtworkProps> = ({
             <rect x="18" y="128" width="340" height="65" fill="#232934" stroke="#3f4756" strokeWidth="2" />
           </g>
 
-          {/* CENTER: Sealed Inter-Car Partition Door (looking dimly toward Сясюня's car) */}
+          {/* CENTER: Sealed Inter-Car Partition Door + Transfer Hatch (Hotspot x:51%, y:67%) */}
           <g transform="translate(650, 315)">
             <rect width="345" height="378" rx="8" fill="#7f1d1d" stroke="#290707" strokeWidth="4" />
             <rect x="52" y="32" width="240" height="185" rx="14" fill="#111827" stroke="#18181b" strokeWidth="8" />
-            {/* Faint warm silhouette glow of the adjacent vestibule */}
             <rect x="64" y="44" width="216" height="161" rx="8" fill="#dc2626" opacity="0.1" />
             <text x="172" y="132" fill="#94a3b8" fontSize="14" fontFamily="monospace" textAnchor="middle" opacity="0.7">
               МІЖВАГОННІ ДВЕРІ
             </text>
             {/* Transfer chute slot */}
-            <rect x="86" y="254" width="172" height="70" rx="8" fill="#181c24" stroke="#38bdf8" strokeWidth="2" />
-            <rect x="102" y="268" width="140" height="24" rx="4" fill="#090c12" stroke="#334155" strokeWidth="1.5" />
-            <text x="172" y="311" fill="#7dd3fc" fontSize="11" fontWeight="700" textAnchor="middle" fontFamily="monospace">
-              ШЛЮЗ ПЕРЕДАЧІ → СЯСЮНЯ
+            <rect
+              x="86"
+              y="254"
+              width="172"
+              height="70"
+              rx="8"
+              fill={hatchHasItem ? '#062c22' : '#181c24'}
+              stroke={hatchHasItem ? '#34d399' : '#38bdf8'}
+              strokeWidth={hatchHasItem ? '3' : '2'}
+            />
+            <rect x="102" y="268" width="140" height="24" rx="4" fill="#090c12" stroke={hatchHasItem ? '#10b981' : '#334155'} strokeWidth="1.5" />
+            <text x="172" y="311" fill={hatchHasItem ? '#6ee7b7' : '#7dd3fc'} fontSize="11" fontWeight="700" textAnchor="middle" fontFamily="monospace">
+              {hatchHasItem ? 'У ШЛЮЗІ Є ПРЕДМЕТ' : 'ШЛЮЗ ПЕРЕДАЧІ → ТАМБУР А'}
             </text>
           </g>
 
-          {/* RIGHT: EMERGENCY LEVER B (Hotspot x:79%, y:53% -> 1264, 477) */}
+          {/* RIGHT: EMERGENCY LEVER B (Hotspot x:79%, y:53%) */}
           <g transform="translate(1168, 326)">
             <rect width="192" height="300" rx="12" fill="#1e2430" stroke="#64748b" strokeWidth="3" />
             <rect x="10" y="10" width="172" height="24" rx="4" fill="url(#p2Hazard)" />
@@ -749,11 +757,11 @@ export const SceneArtwork: React.FC<SceneArtworkProps> = ({
               ВАЖІЛЬ Б
             </text>
             <rect x="82" y="76" width="28" height="170" rx="14" fill="#090c12" stroke="#475569" strokeWidth="2" />
-            <g transform={`translate(0, ${gameState.leverHold.p2 ? 82 : 0})`}>
+            <g transform={`translate(0, ${gameState.leverHold.p1 ? 82 : 0})`}>
               <rect x="89" y="92" width="14" height="58" rx="6" fill="#94a3b8" />
               <rect x="34" y="88" width="124" height="34" rx="10" fill={keypadSolved && fuseInserted ? '#dc2626' : '#64748b'} stroke="#fca5a5" strokeWidth="2.5" />
               <text x="96" y="110" fill="#ffffff" fontSize="13" fontWeight="800" textAnchor="middle" fontFamily="monospace">
-                {gameState.leverHold.p2 ? 'ТРИМАЮ!' : 'ТЯГНИ ВНИЗ'}
+                {gameState.leverHold.p1 ? 'ТРИМАЮ!' : 'ТЯГНИ ВНИЗ'}
               </text>
             </g>
             <circle cx="96" cy="272" r="9" fill={keypadSolved && fuseInserted ? '#10b981' : '#ef4444'} />

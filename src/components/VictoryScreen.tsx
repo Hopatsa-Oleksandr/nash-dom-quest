@@ -1,15 +1,18 @@
-import React, { useEffect, useState } from 'react';
-import { Bus, Clock, Footprints, RotateCcw, Trophy } from 'lucide-react';
-import { PlayerRole, QuestConfig } from '../types/game';
+import React, { useEffect, useMemo, useState } from 'react';
+import { Bus, Clock, Footprints, LogOut, RotateCcw, Trophy } from 'lucide-react';
+import { DialogueLine, PlayerGender, PlayerRole, QuestConfig } from '../types/game';
 import { PlayerAvatar } from './ItemIcons';
+import { g } from '../utils/ukrainianGrammar';
 
 interface VictoryScreenProps {
   quest: QuestConfig;
   playerNames: Record<PlayerRole, string>;
+  playerGenders: Record<PlayerRole, PlayerGender>;
   elapsedMs: number | null;
   chosenEndingId: string | null;
   onChooseEnding: (choiceId: string) => void;
   onRestart: () => void;
+  onExitToMenu: () => void;
 }
 
 function formatDuration(ms: number): string {
@@ -27,14 +30,64 @@ function formatDuration(ms: number): string {
 export const VictoryScreen: React.FC<VictoryScreenProps> = ({
   quest,
   playerNames,
+  playerGenders,
   elapsedMs,
   chosenEndingId,
   onChooseEnding,
   onRestart,
+  onExitToMenu,
 }) => {
   const selectedChoice = quest.victory.choices.find((c) => c.id === chosenEndingId);
   const [bestMs, setBestMs] = useState<number | null>(null);
   const [isNewRecord, setIsNewRecord] = useState(false);
+
+  const dynamicDialogue: DialogueLine[] = useMemo(
+    () => [
+      {
+        speaker: 'p2',
+        text: `Ура! Свіже нічне повітря! Я вже ${g(playerGenders.p2, 'думав', 'думала')}, що залишимося ночувати на цій колії до ранку!`,
+      },
+      {
+        speaker: 'p1',
+        text: `А я ${g(playerGenders.p1, 'попереджав', 'попереджала')}, що ніколи не можна їхати останнім S2 без запасної викрутки та запобіжника!`,
+      },
+      {
+        speaker: 'p2',
+        text: `Зате ти так чітко ${g(playerGenders.p1, 'продиктував', 'продиктувала')} код по рації й ${g(playerGenders.p1, 'передав', 'передала')} запобіжник через шлюз — ми спрацювали як справжня команда!`,
+      },
+      {
+        speaker: 'p1',
+        text: `А ти без жодної помилки ${g(playerGenders.p2, 'ввів', 'ввела')} код у NOTBREMSE і ${g(playerGenders.p2, 'запустив', 'запустила')} аварійні важелі. Ну що, куди далі?`,
+      },
+    ],
+    [playerGenders.p1, playerGenders.p2]
+  );
+
+  const dynamicEpilogue: DialogueLine[] = useMemo(() => {
+    if (!selectedChoice) return [];
+    if (selectedChoice.id === 'walk') {
+      return [
+        {
+          speaker: 'p1',
+          text: 'Пішки по нічному Штутгарту — найкращий спосіб перевести подих після цієї аварійної зупинки!',
+        },
+        {
+          speaker: 'p2',
+          text: `${g(playerGenders.p2, 'Згоден', 'Згодна')}! Тільки якщо побачиш по дорозі ще один червоний потяг S2 — обходимо його десятою дорогою!`,
+        },
+      ];
+    }
+    return [
+      {
+        speaker: 'p2',
+        text: 'Дивись, нічний автобус N2 вже під’їжджає! Сподіваюся, у нього двері відкриваються без 4-значного коду.',
+      },
+      {
+        speaker: 'p1',
+        text: 'Тільки-но сядемо — я одразу перевірю, чи працює кнопка зупинки, бо ще один такий квест я сьогодні не витримаю!',
+      },
+    ];
+  }, [playerGenders.p2, selectedChoice]);
 
   useEffect(() => {
     if (elapsedMs === null || elapsedMs <= 0) return;
@@ -113,9 +166,9 @@ export const VictoryScreen: React.FC<VictoryScreenProps> = ({
           </div>
         )}
 
-        {/* Short funny Ukrainian dialogue */}
+        {/* Short funny Ukrainian dialogue with dynamic gender agreement */}
         <div className="space-y-3">
-          {quest.victory.dialogue.map((line, index) => (
+          {dynamicDialogue.map((line, index) => (
             <div
               key={index}
               className={`flex items-start gap-3 ${
@@ -126,6 +179,7 @@ export const VictoryScreen: React.FC<VictoryScreenProps> = ({
                 <PlayerAvatar
                   role={line.speaker}
                   name={playerNames[line.speaker]}
+                  gender={playerGenders[line.speaker]}
                   avatarUrl={quest.players[line.speaker].avatarUrl}
                   online
                   speaking={false}
@@ -135,8 +189,8 @@ export const VictoryScreen: React.FC<VictoryScreenProps> = ({
               <div
                 className={`max-w-[78%] rounded-xl px-4 py-3 text-sm leading-relaxed border ${
                   line.speaker === 'p1'
-                    ? 'bg-sky-950/35 border-sky-500/30 text-zinc-100'
-                    : 'bg-rose-950/35 border-rose-500/30 text-zinc-100'
+                    ? 'bg-rose-950/35 border-rose-500/30 text-zinc-100'
+                    : 'bg-sky-950/35 border-sky-500/30 text-zinc-100'
                 }`}
               >
                 {line.text}
@@ -147,7 +201,7 @@ export const VictoryScreen: React.FC<VictoryScreenProps> = ({
 
         {/* Final Choice or Epilogue */}
         {!selectedChoice ? (
-          <div className="space-y-2.5 pt-1">
+          <div className="space-y-3 pt-1">
             <p className="text-xs font-semibold text-zinc-400 text-center">
               Оберіть фінал цієї нічної пригоди:
             </p>
@@ -173,6 +227,16 @@ export const VictoryScreen: React.FC<VictoryScreenProps> = ({
                 </button>
               ))}
             </div>
+            <div className="flex justify-center pt-1">
+              <button
+                type="button"
+                onClick={onExitToMenu}
+                className="px-4 py-2 rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 text-xs font-semibold text-zinc-300 hover:text-white flex items-center gap-1.5 transition-colors"
+              >
+                <LogOut className="w-3.5 h-3.5" />
+                <span>Вийти в головне меню</span>
+              </button>
+            </div>
           </div>
         ) : (
           <div className="space-y-4 pt-2 border-t border-zinc-800">
@@ -180,7 +244,7 @@ export const VictoryScreen: React.FC<VictoryScreenProps> = ({
               Ваш вибір: {selectedChoice.label}
             </div>
             <div className="space-y-2.5">
-              {selectedChoice.epilogue.map((line, index) => (
+              {dynamicEpilogue.map((line, index) => (
                 <div
                   key={index}
                   className={`flex items-start gap-3 ${
@@ -191,6 +255,7 @@ export const VictoryScreen: React.FC<VictoryScreenProps> = ({
                     <PlayerAvatar
                       role={line.speaker}
                       name={playerNames[line.speaker]}
+                      gender={playerGenders[line.speaker]}
                       avatarUrl={quest.players[line.speaker].avatarUrl}
                       online
                       speaking={false}
@@ -212,6 +277,14 @@ export const VictoryScreen: React.FC<VictoryScreenProps> = ({
               >
                 <RotateCcw className="w-4 h-4" />
                 Пройти квест ще раз
+              </button>
+              <button
+                type="button"
+                onClick={onExitToMenu}
+                className="px-5 py-2.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-100 font-bold text-sm flex items-center gap-2 transition-colors whitespace-nowrap"
+              >
+                <LogOut className="w-4 h-4" />
+                Вийти в меню
               </button>
             </div>
           </div>

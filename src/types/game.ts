@@ -1,8 +1,15 @@
 export type PlayerRole = 'p1' | 'p2';
 
+export type PlayerGender = 'm' | 'f';
+
 export type SceneMode = 'shared' | 'split';
 
 export type ItemIconId = 'screwdriver' | 'service_key' | 'fuse';
+
+export interface PlayerProfile {
+  name: string;
+  gender: PlayerGender;
+}
 
 export interface QuestItem {
   id: string;
@@ -21,6 +28,7 @@ export type HotspotType =
   | 'keypad'
   | 'fuse_slot'
   | 'led_display'
+  | 'transfer_hatch'
   | 'coop_lever';
 
 export interface LedCodeEntry {
@@ -44,6 +52,9 @@ export interface HotspotConfig {
   noteSender?: string;
   noteTime?: string;
   noteText?: string;
+  /** For 'pickup' that requires Scene 1 clue to be read first */
+  requiresClueRead?: boolean;
+  beforeClueText?: string;
   /** For 'pickup' or 'locked_container' */
   givesItemId?: string;
   alreadyTakenText?: string;
@@ -76,6 +87,8 @@ export interface SceneConfig {
   title: string;
   mode: SceneMode;
   task: string;
+  /** Optional asymmetric task text per player in split mode */
+  taskByRole?: Record<PlayerRole, string>;
   /** In 'shared' mode use sharedView; in 'split' mode use viewsByRole */
   sharedView?: SceneViewConfig;
   viewsByRole?: Record<PlayerRole, SceneViewConfig>;
@@ -103,9 +116,11 @@ export interface QuestConfig {
     PlayerRole,
     {
       defaultName: string;
+      defaultGender: PlayerGender;
       avatarUrl: string;
       accentColor: string;
       badgeLabel: string;
+      carLabel: string;
     }
   >;
   items: Record<string, QuestItem>;
@@ -171,16 +186,25 @@ export interface EmergencySirenAlert {
 
 export interface GameState {
   questId: string;
+  /** Monotonic state revision for conflict-free heartbeat synchronization */
+  stateVersion: number;
   currentSceneId: string;
   phase: 'playing' | 'transition' | 'victory';
   transitionText: string | null;
+  /** Strict Scene 1 progression tracking */
+  scene1: {
+    clueRead: boolean;
+  };
+  /** Synced player profiles (names & genders) */
+  players: Record<PlayerRole, PlayerProfile>;
   inventory: InventoryEntry[];
+  /** Persistent transfer hatch item synced across both players */
+  transferHatchItem: string | null;
+  transferHatchFromRole: PlayerRole | null;
   /** Hotspot IDs that have been picked up, unlocked, or solved */
   solvedHotspots: string[];
   /** Global quest flags (e.g. 'keypad_unlocked', 'fuse_inserted') */
   flags: string[];
-  /** Shared notebook entries synced via PeerJS */
-  notes: NotebookNote[];
   /** Simultaneous lever hold states */
   leverHold: Record<PlayerRole, boolean>;
   /** Selected victory choice ID */
@@ -197,10 +221,26 @@ export interface GameState {
   };
 }
 
+export type GameMutationAction =
+  | { kind: 'READ_SCENE1_CLUE'; hotspotId: string; toast: string }
+  | { kind: 'COLLECT_ITEM'; hotspotId: string; itemId: string; owner: 'shared' | PlayerRole; toast: string }
+  | { kind: 'UNLOCK_CONTAINER'; hotspotId: string; consumedItemId?: string; givesItemId: string; owner: 'shared' | PlayerRole; toast: string }
+  | { kind: 'SOLVE_KEYPAD'; hotspotId: string; flag: string; toast: string }
+  | { kind: 'INSERT_FUSE'; hotspotId: string; itemId: string; flag: string; toast: string }
+  | { kind: 'PUT_IN_HATCH'; itemId: string; fromRole: PlayerRole; fromName: string; fromGender: PlayerGender }
+  | { kind: 'TAKE_FROM_HATCH'; toRole: PlayerRole; toName: string; toGender: PlayerGender }
+  | { kind: 'UPDATE_PLAYER_PROFILE'; role: PlayerRole; name: string; gender: PlayerGender }
+  | { kind: 'START_TIMER'; startedAt: number }
+  | { kind: 'START_TRANSITION'; hotspotId: string; targetSceneId: string; narration: string }
+  | { kind: 'COMPLETE_TRANSITION'; targetSceneId: string }
+  | { kind: 'COMPLETE_ESCAPE'; elapsedMs?: number }
+  | { kind: 'CHOOSE_VICTORY'; choiceId: string }
+  | { kind: 'RESTART'; startedAt?: number };
+
 export type PeerMessage =
   | { type: 'FULL_STATE'; state: GameState }
   | { type: 'REQUEST_STATE' }
-  | { type: 'PLAYER_HELLO'; role: PlayerRole; name: string }
+  | { type: 'PLAYER_HELLO'; role: PlayerRole; name: string; gender: PlayerGender }
   | { type: 'POINTER'; ping: PointerPing }
   | { type: 'LEVER_HOLD'; role: PlayerRole; holding: boolean }
   | { type: 'PTT_STATUS'; role: PlayerRole; speaking: boolean }
@@ -209,20 +249,4 @@ export type PeerMessage =
   | { type: 'EMERGENCY_SIREN'; alert: EmergencySirenAlert }
   | { type: 'LATENCY_PING'; id: string; sentAt: number }
   | { type: 'LATENCY_PONG'; id: string; sentAt: number }
-  | {
-      type: 'GAME_MUTATION';
-      action:
-        | { kind: 'COLLECT_ITEM'; hotspotId: string; itemId: string; owner: 'shared' | PlayerRole; toast: string }
-        | { kind: 'UNLOCK_CONTAINER'; hotspotId: string; consumedItemId?: string; givesItemId: string; owner: 'shared' | PlayerRole; toast: string }
-        | { kind: 'SOLVE_KEYPAD'; hotspotId: string; flag: string; toast: string }
-        | { kind: 'INSERT_FUSE'; hotspotId: string; itemId: string; flag: string; toast: string }
-        | { kind: 'TRANSFER_ITEM'; itemId: string; toRole: PlayerRole; fromName: string; toName: string }
-        | { kind: 'START_TIMER'; startedAt: number }
-        | { kind: 'START_TRANSITION'; hotspotId: string; targetSceneId: string; narration: string }
-        | { kind: 'COMPLETE_TRANSITION'; targetSceneId: string }
-        | { kind: 'COMPLETE_ESCAPE'; elapsedMs?: number }
-        | { kind: 'CHOOSE_VICTORY'; choiceId: string }
-        | { kind: 'ADD_NOTE'; note: NotebookNote }
-        | { kind: 'DELETE_NOTE'; noteId: string }
-        | { kind: 'RESTART'; startedAt?: number };
-    };
+  | { type: 'GAME_MUTATION'; action: GameMutationAction };

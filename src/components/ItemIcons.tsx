@@ -77,6 +77,7 @@ export const ItemIcon: React.FC<{ icon: ItemIconId; className?: string }> = ({
 interface PlayerAvatarProps {
   role: PlayerRole;
   name: string;
+  gender?: 'm' | 'f';
   avatarUrl: string;
   online: boolean;
   speaking: boolean;
@@ -87,6 +88,7 @@ interface PlayerAvatarProps {
 export const PlayerAvatar: React.FC<PlayerAvatarProps> = ({
   role,
   name,
+  gender,
   avatarUrl,
   online,
   speaking,
@@ -95,6 +97,7 @@ export const PlayerAvatar: React.FC<PlayerAvatarProps> = ({
 }) => {
   const resolvedAvatarUrl =
     avatarUrl || (role === 'p1' ? '/assets/avatar-p1.png' : '/assets/avatar-p2.png');
+  const resolvedGender = gender ?? (role === 'p1' ? 'f' : 'm');
   const [imgStatus, setImgStatus] = useState<'loading' | 'loaded' | 'error'>('loading');
   const dim = size === 'sm' ? 'w-10 h-10' : 'w-11 h-11 sm:w-12 sm:h-12';
 
@@ -118,8 +121,8 @@ export const PlayerAvatar: React.FC<PlayerAvatarProps> = ({
               ? 'border-emerald-400 shadow-[0_0_16px_rgba(52,211,153,0.75)] scale-105'
               : online
                 ? role === 'p1'
-                  ? 'border-sky-400/80 shadow-[0_2px_10px_rgba(0,0,0,0.65)]'
-                  : 'border-rose-400/80 shadow-[0_2px_10px_rgba(0,0,0,0.65)]'
+                  ? 'border-rose-400/80 shadow-[0_2px_10px_rgba(0,0,0,0.65)]'
+                  : 'border-sky-400/80 shadow-[0_2px_10px_rgba(0,0,0,0.65)]'
                 : 'border-zinc-600/70 opacity-65'
           }`}
         >
@@ -145,50 +148,38 @@ export const PlayerAvatar: React.FC<PlayerAvatarProps> = ({
           )}
 
           {/* Fallback SVG rendered only when avatar image fails to load (or while fetching) */}
-          {imgStatus !== 'loaded' && (role === 'p1' ? (
-            /* Clean illustrated placeholder SVG for Сясюня (p1) */
+          {imgStatus !== 'loaded' && (resolvedGender === 'm' ? (
             <svg viewBox="0 0 64 64" className="w-full h-full" aria-label={name}>
               <defs>
-                <linearGradient id="av1Bg" x1="0" y1="0" x2="1" y2="1">
+                <linearGradient id={`avM-${role}`} x1="0" y1="0" x2="1" y2="1">
                   <stop offset="0%" stopColor="#0f2942" />
                   <stop offset="100%" stopColor="#1e3a5f" />
                 </linearGradient>
               </defs>
-              <rect width="64" height="64" fill="url(#av1Bg)" />
-              {/* Shoulders / dark coat */}
+              <rect width="64" height="64" fill={`url(#avM-${role})`} />
               <path d="M12 64C12 50 21 44 32 44C43 44 52 50 52 64Z" fill="#0f172a" />
               <path d="M25 45L32 53L39 45" stroke="#38bdf8" strokeWidth="2.5" fill="none" />
-              {/* Hair back */}
-              <path d="M17 30C17 17 24 12 32 12C40 12 47 17 47 30V45H17V30Z" fill="#2c1d18" />
-              {/* Face */}
+              <path d="M19 29C19 17 24 12 32 12C40 12 45 17 45 29V34H19V29Z" fill="#2c1d18" />
               <circle cx="32" cy="29" r="11.5" fill="#f5d0b5" />
-              {/* Hair bangs */}
               <path d="M20 26C22 18 27 15 34 15C40 15 44 19 44 26C40 22 35 20 28 21C24 22 21 24 20 26Z" fill="#2c1d18" />
-              {/* Eyes & smile */}
               <circle cx="28" cy="29" r="1.5" fill="#1e293b" />
               <circle cx="36" cy="29" r="1.5" fill="#1e293b" />
               <path d="M28.5 34C30.2 35.8 33.8 35.8 35.5 34" stroke="#9a5543" strokeWidth="1.6" strokeLinecap="round" fill="none" />
             </svg>
           ) : (
-            /* Clean illustrated placeholder SVG for Юяся (p2) */
             <svg viewBox="0 0 64 64" className="w-full h-full" aria-label={name}>
               <defs>
-                <linearGradient id="av2Bg" x1="0" y1="0" x2="1" y2="1">
+                <linearGradient id={`avF-${role}`} x1="0" y1="0" x2="1" y2="1">
                   <stop offset="0%" stopColor="#3b1526" />
                   <stop offset="100%" stopColor="#5b1f39" />
                 </linearGradient>
               </defs>
-              <rect width="64" height="64" fill="url(#av2Bg)" />
-              {/* Shoulders / scarf */}
+              <rect width="64" height="64" fill={`url(#avF-${role})`} />
               <path d="M12 64C12 50 21 44 32 44C43 44 52 50 52 64Z" fill="#1f1625" />
               <path d="M22 46C26 51 38 51 42 46" stroke="#fb7185" strokeWidth="4" strokeLinecap="round" fill="none" />
-              {/* Hair back */}
               <path d="M16 32C16 17 23 11 32 11C41 11 48 17 48 32L50 47H14L16 32Z" fill="#7c4a27" />
-              {/* Face */}
               <circle cx="32" cy="29" r="11.5" fill="#f7d6be" />
-              {/* Hair bangs */}
               <path d="M20 25C22 17 27 14 33 14C39 14 44 18 44 25C39 20 33 19 26 21C23 22 21 23.5 20 25Z" fill="#7c4a27" />
-              {/* Eyes & smile */}
               <circle cx="28" cy="29" r="1.5" fill="#1e293b" />
               <circle cx="36" cy="29" r="1.5" fill="#1e293b" />
               <path d="M28.5 34C30.2 35.8 33.8 35.8 35.5 34" stroke="#9a5543" strokeWidth="1.6" strokeLinecap="round" fill="none" />

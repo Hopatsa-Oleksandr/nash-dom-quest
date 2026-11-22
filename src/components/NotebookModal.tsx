@@ -46,7 +46,7 @@ export const NotebookModal: React.FC<NotebookModalProps> = ({
       onClick={onClose}
       role="dialog"
       aria-modal="true"
-      aria-label="Спільний блокнот"
+      aria-label="Особистий блокнот"
     >
       <div
         className="relative w-full max-w-md max-h-[85dvh] flex flex-col rounded-2xl bg-[#121620] border border-zinc-700/80 shadow-[0_24px_60px_rgba(0,0,0,0.88)] text-zinc-100 overflow-y-auto"
@@ -58,10 +58,10 @@ export const NotebookModal: React.FC<NotebookModalProps> = ({
             <BookOpen className="w-5 h-5 text-amber-400 shrink-0" />
             <div className="min-w-0">
               <h2 className="font-display text-base sm:text-lg tracking-wide text-zinc-50 uppercase truncate">
-                Спільний блокнот
+                Особистий блокнот
               </h2>
               <p className="text-[11px] text-zinc-400 truncate">
-                Записи синхронізуються між гравцями автоматично
+                Ваші приватні нотатки (не видимі партнеру)
               </p>
             </div>
           </div>
@@ -81,7 +81,7 @@ export const NotebookModal: React.FC<NotebookModalProps> = ({
             <div className="h-full flex flex-col items-center justify-center text-center py-8 px-4 space-y-1.5">
               <p className="text-sm font-semibold text-zinc-300">Поки що записів немає</p>
               <p className="text-xs text-zinc-500 max-w-xs leading-relaxed">
-                Записуйте сюди знайдені коди (наприклад, з табло S2), підказки зі смартфона або розташування предметів.
+                Записуйте сюди важливі підказки, цифри або порядок дій.
               </p>
             </div>
           ) : (
@@ -94,7 +94,7 @@ export const NotebookModal: React.FC<NotebookModalProps> = ({
                   <div className="flex items-center gap-2 text-[11px]">
                     <span
                       className={`font-bold ${
-                        note.authorRole === 'p1' ? 'text-sky-400' : 'text-rose-400'
+                        note.authorRole === 'p1' ? 'text-rose-400' : 'text-sky-400'
                       }`}
                     >
                       {note.authorName}
@@ -134,7 +134,7 @@ export const NotebookModal: React.FC<NotebookModalProps> = ({
               type="text"
               value={draft}
               onChange={(e) => setDraft(e.target.value)}
-              placeholder={`Нова нотатка від ${playerName} (код, підказка)...`}
+              placeholder={`Нова нотатка від ${playerName}...`}
               maxLength={140}
               className="flex-1 px-3.5 py-2.5 rounded-xl bg-zinc-950 border border-zinc-700 focus:border-amber-400 focus:outline-none text-sm text-white placeholder:text-zinc-500"
             />
@@ -144,8 +144,8 @@ export const NotebookModal: React.FC<NotebookModalProps> = ({
               className={`px-4 py-2.5 rounded-xl font-bold text-sm flex items-center gap-1.5 shrink-0 transition-colors ${
                 draft.trim()
                   ? role === 'p1'
-                    ? 'bg-sky-500 hover:bg-sky-400 text-zinc-950'
-                    : 'bg-rose-500 hover:bg-rose-400 text-zinc-950'
+                    ? 'bg-rose-500 hover:bg-rose-400 text-zinc-950'
+                    : 'bg-sky-500 hover:bg-sky-400 text-zinc-950'
                   : 'bg-zinc-800 text-zinc-500 cursor-not-allowed'
               }`}
             >

@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Check, Flame, ShieldAlert } from 'lucide-react';
+import { Check, Flame, LogOut, PackageCheck, ShieldAlert } from 'lucide-react';
 import { PILOT_QUEST_S2 } from './data/questsData';
-import { HotspotConfig, PlayerRole } from './types/game';
+import { HotspotConfig, NotebookNote, PlayerGender, PlayerRole } from './types/game';
 import { usePeerMultiplayer } from './hooks/usePeerMultiplayer';
 import { LobbyScreen } from './components/LobbyScreen';
 import { SceneArtwork } from './components/SceneArtwork';
@@ -11,11 +11,13 @@ import { NotebookModal } from './components/NotebookModal';
 import { VictoryScreen } from './components/VictoryScreen';
 import { trainAmbientEngine } from './utils/ambientAudio';
 import { playErrorBuzz } from './utils/soundFx';
+import { buildTransitionNarration, g } from './utils/ukrainianGrammar';
 
 interface SessionConfig {
   roomId: string;
   role: PlayerRole;
   playerName: string;
+  playerGender: PlayerGender;
   soloTestMode: boolean;
 }
 
@@ -34,15 +36,27 @@ function parseInitialUrlSession(): {
   prefillRoom: string;
   prefillRole: PlayerRole;
   prefillName: string;
+  prefillGender: PlayerGender;
 } {
   if (typeof window === 'undefined') {
-    return { autoJoin: null, prefillRoom: '', prefillRole: 'p1', prefillName: '' };
+    return {
+      autoJoin: null,
+      prefillRoom: '',
+      prefillRole: 'p1',
+      prefillName: '',
+      prefillGender: PILOT_QUEST_S2.players.p1.defaultGender,
+    };
   }
   const params = new URLSearchParams(window.location.search);
   const room = params.get('room')?.trim() ?? '';
   const rawRole = params.get('role')?.trim().toLowerCase();
   const role: PlayerRole = rawRole === 'p2' ? 'p2' : 'p1';
   const name = params.get('name')?.trim() ?? '';
+  const rawGender = params.get('gender')?.trim().toLowerCase();
+  const gender: PlayerGender =
+    rawGender === 'm' || rawGender === 'f'
+      ? rawGender
+      : PILOT_QUEST_S2.players[role].defaultGender;
 
   if (room && (rawRole === 'p1' || rawRole === 'p2')) {
     return {
@@ -50,11 +64,13 @@ function parseInitialUrlSession(): {
         roomId: room,
         role,
         playerName: name || PILOT_QUEST_S2.players[role].defaultName,
+        playerGender: gender,
         soloTestMode: false,
       },
       prefillRoom: room,
       prefillRole: role,
       prefillName: name,
+      prefillGender: gender,
     };
   }
 
@@ -63,6 +79,7 @@ function parseInitialUrlSession(): {
     prefillRoom: room,
     prefillRole: role,
     prefillName: name,
+    prefillGender: gender,
   };
 }
 
@@ -74,7 +91,10 @@ export default function App() {
   const [activeHotspotId, setActiveHotspotId] = useState<string | null>(null);
   const [hoveredHotspotId, setHoveredHotspotId] = useState<string | null>(null);
   const [notebookOpen, setNotebookOpen] = useState<boolean>(false);
-  const [seenNotesCount, setSeenNotesCount] = useState<number>(0);
+  const [personalNotesByRole, setPersonalNotesByRole] = useState<
+    Record<PlayerRole, NotebookNote[]>
+  >({ p1: [], p2: [] });
+  const [exitConfirmOpen, setExitConfirmOpen] = useState<boolean>(false);
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
   const [ambientMuted, setAmbientMuted] = useState<boolean>(false);
   const [batteryLevel, setBatteryLevel] = useState<number>(100);
@@ -86,7 +106,11 @@ export default function App() {
     mode: 'ptt' | 'lowbat';
     bandTop: number;
   }>({ active: false, mode: 'ptt', bandTop: 28 });
-  const [toast, setToast] = useState<{ id: string; text: string; tone: 'info' | 'success' | 'warning' } | null>(null);
+  const [toast, setToast] = useState<{
+    id: string;
+    text: string;
+    tone: 'info' | 'success' | 'warning';
+  } | null>(null);
   const [isMobilePortrait, setIsMobilePortrait] = useState<boolean>(() => {
     if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return false;
     return window.matchMedia('(max-width: 768px) and (orientation: portrait)').matches;
@@ -110,11 +134,14 @@ export default function App() {
 
   const activeRole: PlayerRole = session?.role ?? 'p1';
   const activeName = session?.playerName ?? quest.players[activeRole].defaultName;
+  const activeGender: PlayerGender =
+    session?.playerGender ?? quest.players[activeRole].defaultGender;
 
   const {
     gameState,
     connectionStatus,
     partnerName,
+    partnerGender,
     partnerOnline,
     speakingState,
     micPermission,
@@ -128,6 +155,7 @@ export default function App() {
     emergencySiren,
     pingMs,
     dispatchMutation,
+    disconnectPeer,
     startTalking,
     stopTalking,
     toggleMicMute,
@@ -141,6 +169,7 @@ export default function App() {
     roomId: session?.roomId ?? null,
     role: activeRole,
     playerName: activeName,
+    playerGender: activeGender,
     quest,
     soloTestMode: session?.soloTestMode ?? false,
   });
@@ -168,13 +197,6 @@ export default function App() {
     if (!emergencySiren) return;
     triggerHaptic([180, 90, 220, 90, 180]);
   }, [emergencySiren?.id]);
-
-  // Mark shared notes as read whenever notebook is open
-  useEffect(() => {
-    if (notebookOpen) {
-      setSeenNotesCount(gameState.notes.length);
-    }
-  }, [notebookOpen, gameState.notes.length]);
 
   const isLocalSpeaking = speakingState[activeRole];
 
@@ -294,7 +316,7 @@ export default function App() {
 
   // Desktop Spacebar shortcut for Push-to-Talk Radio & M shortcut for Mute ('Режим тиші')
   useEffect(() => {
-    if (!session || gameState.phase !== 'playing') return;
+    if (!session || gameState.phase !== 'playing' || exitConfirmOpen) return;
     const isTypingTarget = () => {
       const tag = document.activeElement?.tagName;
       return tag === 'INPUT' || tag === 'TEXTAREA';
@@ -321,7 +343,7 @@ export default function App() {
       window.removeEventListener('keydown', onKeyDown);
       window.removeEventListener('keyup', onKeyUp);
     };
-  }, [gameState.phase, handleStartTalking, handleToggleMicMute, session, stopTalking]);
+  }, [exitConfirmOpen, gameState.phase, handleStartTalking, handleToggleMicMute, session, stopTalking]);
 
   const currentScene = quest.scenes[gameState.currentSceneId] ?? quest.scenes[quest.initialSceneId];
   const currentView =
@@ -366,7 +388,8 @@ export default function App() {
 
     const triggerBurst = () => {
       if (cancelled) return;
-      const mode: 'ptt' | 'lowbat' = isLowRadioBattery && !isAnyPttActive ? 'lowbat' : isCriticalBattery ? 'lowbat' : 'ptt';
+      const mode: 'ptt' | 'lowbat' =
+        isLowRadioBattery && !isAnyPttActive ? 'lowbat' : isCriticalBattery ? 'lowbat' : 'ptt';
       const duration = isAnyPttActive
         ? 300 + Math.floor(Math.random() * 440)
         : isCriticalBattery
@@ -475,8 +498,33 @@ export default function App() {
       : null;
 
   const playerNames: Record<PlayerRole, string> = {
-    p1: activeRole === 'p1' ? activeName : session?.soloTestMode ? quest.players.p1.defaultName : partnerName,
-    p2: activeRole === 'p2' ? activeName : session?.soloTestMode ? quest.players.p2.defaultName : partnerName,
+    p1:
+      activeRole === 'p1'
+        ? activeName
+        : session?.soloTestMode
+          ? gameState.players.p1.name || quest.players.p1.defaultName
+          : partnerName,
+    p2:
+      activeRole === 'p2'
+        ? activeName
+        : session?.soloTestMode
+          ? gameState.players.p2.name || quest.players.p2.defaultName
+          : partnerName,
+  };
+
+  const playerGenders: Record<PlayerRole, PlayerGender> = {
+    p1:
+      activeRole === 'p1'
+        ? activeGender
+        : session?.soloTestMode
+          ? gameState.players.p1.gender
+          : partnerGender,
+    p2:
+      activeRole === 'p2'
+        ? activeGender
+        : session?.soloTestMode
+          ? gameState.players.p2.gender
+          : partnerGender,
   };
 
   // Sync URL params cleanly when joining from Lobby
@@ -488,9 +536,37 @@ export default function App() {
       url.searchParams.set('room', cfg.roomId);
       url.searchParams.set('role', cfg.role);
       url.searchParams.set('name', cfg.playerName);
+      url.searchParams.set('gender', cfg.playerGender);
       window.history.replaceState({}, '', url.toString());
     }
   }, []);
+
+  // Clean Exit to Main Menu (disconnects PeerJS, clears URL room params, resets session)
+  const handleConfirmExit = useCallback(() => {
+    triggerHaptic(50);
+    disconnectPeer();
+    trainAmbientEngine.stop();
+    if (typeof window !== 'undefined') {
+      const url = new URL(window.location.href);
+      url.searchParams.delete('room');
+      url.searchParams.delete('role');
+      url.searchParams.delete('name');
+      url.searchParams.delete('gender');
+      window.history.replaceState({}, '', url.pathname + url.search + url.hash);
+    }
+    setActiveHotspotId(null);
+    setHoveredHotspotId(null);
+    setNotebookOpen(false);
+    setPersonalNotesByRole({ p1: [], p2: [] });
+    setSelectedItemId(null);
+    setBatteryLevel(100);
+    setBatteryDepleted(false);
+    setPttHoldSeconds(0);
+    setRadioOverheating(false);
+    setExitConfirmOpen(false);
+    setToast(null);
+    setSession(null);
+  }, [disconnectPeer]);
 
   // Laser pointer tap on the shared scene canvas
   const handleStageClick = (e: React.MouseEvent<HTMLDivElement>) => {
@@ -501,7 +577,7 @@ export default function App() {
     emitPointerTap(x, y);
   };
 
-  // Hotspot action callbacks
+  // Hotspot action callbacks (strict progression + gender-accurate Ukrainian toasts)
   const handleCollectItem = (hotspot: HotspotConfig, itemId: string) => {
     triggerHaptic(50);
     const itemName = quest.items[itemId]?.name ?? 'Предмет';
@@ -510,7 +586,7 @@ export default function App() {
       hotspotId: hotspot.id,
       itemId,
       owner: currentScene.mode === 'shared' ? 'shared' : activeRole,
-      toast: `Знайдено предмет: «${itemName}»`,
+      toast: `${activeName} ${g(activeGender, 'знайшов', 'знайшла')} предмет: «${itemName}»`,
     });
     setSelectedItemId(itemId);
   };
@@ -525,7 +601,7 @@ export default function App() {
       consumedItemId: hotspot.requiredItemId,
       givesItemId: hotspot.givesItemId,
       owner: currentScene.mode === 'shared' ? 'shared' : activeRole,
-      toast: `Люк відкрито! Отримано «${newItemName}»`,
+      toast: `${activeName} ${g(activeGender, 'відкрив', 'відкрила')} люк! Отримано «${newItemName}»`,
     });
     setSelectedItemId(hotspot.givesItemId);
   };
@@ -536,7 +612,7 @@ export default function App() {
       kind: 'SOLVE_KEYPAD',
       hotspotId: hotspot.id,
       flag: 'keypad_unlocked',
-      toast: 'Код 4719 прийнято! Бокс NOTBREMSE розблоковано.',
+      toast: `${activeName} ${g(activeGender, 'розблокував', 'розблокувала')} бокс NOTBREMSE!`,
     });
   };
 
@@ -548,21 +624,34 @@ export default function App() {
       hotspotId: hotspot.id,
       itemId: hotspot.requiredItemId,
       flag: 'fuse_inserted',
-      toast: 'Запобіжник встановлено! Важелі готові до одночасного запуску.',
+      toast: `${activeName} ${g(activeGender, 'вставив', 'вставила')} запобіжник 32A! Перевірте аварійні важелі.`,
     });
     setSelectedItemId(null);
   };
 
-  const handleTransferItem = (itemId: string) => {
+  const handlePutInHatch = (itemId: string) => {
     triggerHaptic(50);
-    const toRole: PlayerRole = activeRole === 'p1' ? 'p2' : 'p1';
     dispatchMutation({
-      kind: 'TRANSFER_ITEM',
+      kind: 'PUT_IN_HATCH',
       itemId,
-      toRole,
-      fromName: playerNames[activeRole],
-      toName: playerNames[toRole],
+      fromRole: activeRole,
+      fromName: activeName,
+      fromGender: activeGender,
     });
+    setSelectedItemId(null);
+  };
+
+  const handleTakeFromHatch = () => {
+    if (!gameState.transferHatchItem) return;
+    triggerHaptic(120);
+    const takenId = gameState.transferHatchItem;
+    dispatchMutation({
+      kind: 'TAKE_FROM_HATCH',
+      toRole: activeRole,
+      toName: activeName,
+      toGender: activeGender,
+    });
+    setSelectedItemId(takenId);
   };
 
   const handleTriggerTransition = (hotspot: HotspotConfig) => {
@@ -572,33 +661,35 @@ export default function App() {
       kind: 'START_TRANSITION',
       hotspotId: hotspot.id,
       targetSceneId: hotspot.targetSceneId,
-      narration:
-        hotspot.transitionNarration ??
-        'Червоні двері зачинилися прямо між вами! Тримайте зв’язок по рації.',
+      narration: buildTransitionNarration(playerNames, playerGenders),
     });
     setSelectedItemId(null);
   };
 
+  // Strictly personal local notes (NEVER synced across PeerJS to prevent spoilers)
+  const myPersonalNotes = personalNotesByRole[activeRole];
+
   const handleAddNote = (text: string) => {
     triggerHaptic(50);
-    dispatchMutation({
-      kind: 'ADD_NOTE',
-      note: {
-        id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-        text,
-        authorRole: activeRole,
-        authorName: activeName,
-        createdAt: Date.now(),
-      },
-    });
+    const newNote: NotebookNote = {
+      id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      text,
+      authorRole: activeRole,
+      authorName: activeName,
+      createdAt: Date.now(),
+    };
+    setPersonalNotesByRole((prev) => ({
+      ...prev,
+      [activeRole]: [...prev[activeRole], newNote],
+    }));
   };
 
   const handleDeleteNote = (noteId: string) => {
     triggerHaptic(50);
-    dispatchMutation({
-      kind: 'DELETE_NOTE',
-      noteId,
-    });
+    setPersonalNotesByRole((prev) => ({
+      ...prev,
+      [activeRole]: prev[activeRole].filter((n) => n.id !== noteId),
+    }));
   };
 
   const handleSwitchSoloRole = () => {
@@ -609,7 +700,8 @@ export default function App() {
     setSession({
       ...session,
       role: nextRole,
-      playerName: quest.players[nextRole].defaultName,
+      playerName: gameState.players[nextRole].name || quest.players[nextRole].defaultName,
+      playerGender: gameState.players[nextRole].gender || quest.players[nextRole].defaultGender,
     });
   };
 
@@ -621,6 +713,7 @@ export default function App() {
         initialRoom={initialUrl.prefillRoom}
         initialRole={initialUrl.prefillRole}
         initialName={initialUrl.prefillName}
+        initialGender={initialUrl.prefillGender}
         onJoin={handleJoinSession}
       />
     );
@@ -639,6 +732,7 @@ export default function App() {
         <VictoryScreen
           quest={quest}
           playerNames={playerNames}
+          playerGenders={playerGenders}
           elapsedMs={gameState.elapsedMs}
           chosenEndingId={gameState.victoryChoiceId}
           onChooseEnding={(choiceId) => dispatchMutation({ kind: 'CHOOSE_VICTORY', choiceId })}
@@ -646,10 +740,12 @@ export default function App() {
             setActiveHotspotId(null);
             setHoveredHotspotId(null);
             setSelectedItemId(null);
+            setPersonalNotesByRole({ p1: [], p2: [] });
             setBatteryLevel(100);
             setBatteryDepleted(false);
             dispatchMutation({ kind: 'RESTART', startedAt: Date.now() });
           }}
+          onExitToMenu={handleConfirmExit}
         />
       </main>
     );
@@ -657,7 +753,7 @@ export default function App() {
 
   const stageCanvasContent = (
     <>
-      {/* Illustrated / Photo Scene Backdrop with Depth-of-Field, dynamic chromatic aberration & P2 remote effects */}
+      {/* Illustrated / Photo Scene Backdrop with Depth-of-Field, dynamic chromatic aberration & remote effects */}
       <SceneArtwork
         view={currentView}
         gameState={gameState}
@@ -684,13 +780,13 @@ export default function App() {
             <span
               className="block w-11 h-11 rounded-full border-2 animate-laser-ripple"
               style={{
-                borderColor: ping.playerRole === 'p1' ? '#38bdf8' : '#fb7185',
+                borderColor: ping.playerRole === 'p1' ? '#fb7185' : '#38bdf8',
               }}
             />
             <span
               className="absolute left-0 top-0 -translate-x-1/2 -translate-y-1/2 w-2.5 h-2.5 rounded-full shadow-lg"
               style={{
-                backgroundColor: ping.playerRole === 'p1' ? '#38bdf8' : '#fb7185',
+                backgroundColor: ping.playerRole === 'p1' ? '#fb7185' : '#38bdf8',
               }}
             />
             <span className="absolute left-3 -top-3 px-1.5 py-0.5 rounded bg-black/75 text-[10px] font-bold text-white whitespace-nowrap">
@@ -699,7 +795,7 @@ export default function App() {
           </div>
         ))}
 
-      {/* Interactive Glowing Hotspots */}
+      {/* Interactive Glowing Hotspots (no permanent labels; only Transfer Hatch shows incoming badge) */}
       <div className="absolute inset-0 z-10">
         {visibleHotspots.map((hs) => {
           const isSolved = gameState.solvedHotspots.includes(hs.id);
@@ -707,6 +803,10 @@ export default function App() {
             hs.type === 'coop_lever' &&
             gameState.flags.includes('keypad_unlocked') &&
             gameState.flags.includes('fuse_inserted');
+          const isIncomingHatchHotspot =
+            hs.type === 'transfer_hatch' &&
+            Boolean(gameState.transferHatchItem) &&
+            gameState.transferHatchFromRole !== activeRole;
 
           return (
             <button
@@ -726,17 +826,38 @@ export default function App() {
                 if (currentScene.mode === 'shared') {
                   emitPointerTap(hs.x, hs.y);
                 }
+                // Step 1 in Scene 1: reading smartphone SMS unlocks the trash bin
+                if (hs.id === 'hs-smartphone' && !gameState.scene1.clueRead) {
+                  dispatchMutation({
+                    kind: 'READ_SCENE1_CLUE',
+                    hotspotId: hs.id,
+                    toast: `${activeName} ${g(activeGender, 'прочитав', 'прочитала')} SMS від провідника — перевірте смітник!`,
+                  });
+                }
+                // Instant pickup if Transfer Hatch has an incoming item waiting for this player
+                if (isIncomingHatchHotspot) {
+                  handleTakeFromHatch();
+                  return;
+                }
                 setActiveHotspotId(hs.id);
               }}
               style={{ left: `${hs.x}%`, top: `${hs.y}%` }}
               className="group absolute -translate-x-1/2 -translate-y-1/2 w-12 h-12 sm:w-14 sm:h-14 flex items-center justify-center focus:outline-none"
               aria-label={hs.label}
             >
+              {/* Incoming Transfer Hatch Alert Badge */}
+              {isIncomingHatchHotspot && (
+                <span className="pointer-events-none absolute -top-7 left-1/2 -translate-x-1/2 flex items-center gap-1 px-2 py-0.5 rounded-lg bg-emerald-500 text-zinc-950 font-mono-tech text-[10px] font-bold shadow-[0_0_18px_rgba(16,185,129,0.85)] whitespace-nowrap animate-bounce">
+                  <PackageCheck className="w-3 h-3 shrink-0" />
+                  <span>Отримано предмет!</span>
+                </span>
+              )}
+
               {/* Pulsing outer glow ring */}
               {!isSolved && (
                 <span
                   className={`absolute inset-1 rounded-full border-2 animate-hotspot-pulse pointer-events-none ${
-                    isLeverActive
+                    isIncomingHatchHotspot || isLeverActive
                       ? 'border-emerald-400'
                       : 'border-amber-300/90'
                   }`}
@@ -746,14 +867,18 @@ export default function App() {
               {/* Core glowing circular hotspot ring */}
               <span
                 className={`relative w-8 h-8 sm:w-9 sm:h-9 rounded-full border-2 flex items-center justify-center backdrop-blur-[2px] transition-transform duration-150 group-hover:scale-110 group-active:scale-95 ${
-                  isSolved
-                    ? 'bg-emerald-500/25 border-emerald-400/90 text-emerald-300 shadow-[0_0_14px_rgba(16,185,129,0.5)]'
-                    : isLeverActive
-                      ? 'bg-emerald-500/25 border-emerald-300 text-white shadow-[0_0_18px_rgba(16,185,129,0.7)]'
-                      : 'bg-amber-400/20 border-amber-300 text-amber-100 shadow-[0_0_18px_rgba(251,191,36,0.65)]'
+                  isIncomingHatchHotspot
+                    ? 'bg-emerald-500/35 border-emerald-300 text-emerald-100 shadow-[0_0_24px_rgba(16,185,129,0.9)]'
+                    : isSolved
+                      ? 'bg-emerald-500/25 border-emerald-400/90 text-emerald-300 shadow-[0_0_14px_rgba(16,185,129,0.5)]'
+                      : isLeverActive
+                        ? 'bg-emerald-500/25 border-emerald-300 text-white shadow-[0_0_18px_rgba(16,185,129,0.7)]'
+                        : 'bg-amber-400/20 border-amber-300 text-amber-100 shadow-[0_0_18px_rgba(251,191,36,0.65)]'
                 }`}
               >
-                {isSolved ? (
+                {isIncomingHatchHotspot ? (
+                  <PackageCheck className="w-4 h-4 stroke-[2.5]" />
+                ) : isSolved ? (
                   <Check className="w-4 h-4 stroke-[3]" />
                 ) : (
                   <span className="w-2.5 h-2.5 rounded-full bg-white shadow-[0_0_8px_#fff]" />
@@ -773,6 +898,7 @@ export default function App() {
     role: activeRole,
     roomId: session.roomId,
     playerNames,
+    playerGenders,
     connectionStatus,
     partnerOnline,
     speakingState,
@@ -783,8 +909,8 @@ export default function App() {
     radioChatLog,
     selectedItemId,
     soloTestMode: session.soloTestMode,
-    notesCount: gameState.notes.length,
-    hasUnreadNotes: !notebookOpen && gameState.notes.length > seenNotesCount,
+    notesCount: myPersonalNotes.length,
+    hasUnreadNotes: false,
     activeRemoteEffect,
     emergencySiren,
     pingMs,
@@ -800,7 +926,12 @@ export default function App() {
     },
     onTriggerSiren: triggerEmergencySiren,
     onSelectItem: setSelectedItemId,
-    onTransferItem: handleTransferItem,
+    onPutInHatch: handlePutInHatch,
+    onTakeFromHatch: handleTakeFromHatch,
+    onRequestExit: () => {
+      triggerHaptic(50);
+      setExitConfirmOpen(true);
+    },
     onStartTalking: handleStartTalking,
     onStopTalking: stopTalking,
     onSendQuickPing: (text: string) => {
@@ -811,7 +942,11 @@ export default function App() {
         isSurge: activeRemoteEffect?.kind === 'surge',
       });
     },
-    onSendRemoteCommand: (kind: Parameters<typeof sendRemoteCommand>[0], cmd: string, label: string) => {
+    onSendRemoteCommand: (
+      kind: Parameters<typeof sendRemoteCommand>[0],
+      cmd: string,
+      label: string
+    ) => {
       triggerHaptic(50);
       setBatteryLevel((prev) => Math.max(0, prev - 2));
       sendRemoteCommand(kind, cmd, label);
@@ -819,7 +954,6 @@ export default function App() {
     onOpenNotebook: () => {
       triggerHaptic(50);
       setNotebookOpen(true);
-      setSeenNotesCount(gameState.notes.length);
     },
     onSwitchSoloRole: handleSwitchSoloRole,
   };
@@ -960,6 +1094,8 @@ export default function App() {
           quest={quest}
           gameState={gameState}
           role={activeRole}
+          playerNames={playerNames}
+          playerGenders={playerGenders}
           sceneMode={currentScene.mode}
           soloTestMode={session.soloTestMode}
           onClose={() => setActiveHotspotId(null)}
@@ -967,6 +1103,8 @@ export default function App() {
           onUnlockContainer={handleUnlockContainer}
           onSolveKeypad={handleSolveKeypad}
           onInsertFuse={handleInsertFuse}
+          onPutInHatch={handlePutInHatch}
+          onTakeFromHatch={handleTakeFromHatch}
           onTriggerTransition={handleTriggerTransition}
           onSetLeverHolding={setLeverHolding}
           onCompleteEscape={() => {
@@ -980,16 +1118,60 @@ export default function App() {
         />
       )}
 
-      {/* Shared Synced Notebook Modal */}
+      {/* Strictly Personal Private Notebook Modal (Not synced across players) */}
       {notebookOpen && (
         <NotebookModal
-          notes={gameState.notes}
+          notes={myPersonalNotes}
           role={activeRole}
           playerName={activeName}
           onAddNote={handleAddNote}
           onDeleteNote={handleDeleteNote}
           onClose={() => setNotebookOpen(false)}
         />
+      )}
+
+      {/* Exit to Main Menu Confirmation Modal */}
+      {exitConfirmOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm"
+          onClick={() => setExitConfirmOpen(false)}
+          role="dialog"
+          aria-modal="true"
+          aria-label="Підтвердження виходу в головне меню"
+        >
+          <div
+            className="w-full max-w-sm max-h-[85dvh] overflow-y-auto rounded-2xl bg-[#121620] border border-zinc-700/80 shadow-[0_24px_60px_rgba(0,0,0,0.9)] p-5 space-y-4 text-center"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="mx-auto w-11 h-11 rounded-full bg-red-950/70 border border-red-500/50 flex items-center justify-center text-red-400">
+              <LogOut className="w-5 h-5" />
+            </div>
+            <div className="space-y-1.5">
+              <h2 className="font-display text-lg font-bold tracking-wide text-white uppercase">
+                Вихід у головне меню
+              </h2>
+              <p className="text-sm text-zinc-300 leading-relaxed">
+                Ви дійсно хочете вийти в головне меню? Поточний прогрес сесії буде призупинено.
+              </p>
+            </div>
+            <div className="grid grid-cols-2 gap-2.5 pt-1">
+              <button
+                type="button"
+                onClick={() => setExitConfirmOpen(false)}
+                className="py-2.5 px-4 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-100 font-semibold text-sm transition-colors"
+              >
+                Скасувати
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmExit}
+                className="py-2.5 px-4 rounded-xl bg-red-600 hover:bg-red-500 text-white font-bold text-sm transition-colors"
+              >
+                Вийти в меню
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </main>
   );

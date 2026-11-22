@@ -12,6 +12,7 @@ import {
   MessageSquare,
   Mic,
   MicOff,
+  PackageCheck,
   Radio,
   Send,
   Siren,
@@ -24,6 +25,7 @@ import {
 import {
   EmergencySirenAlert,
   GameState,
+  PlayerGender,
   PlayerRole,
   QuestConfig,
   RadioPingMessage,
@@ -33,7 +35,8 @@ import {
 } from '../types/game';
 import { ConnectionStatus } from '../hooks/usePeerMultiplayer';
 import { ItemIcon, PlayerAvatar } from './ItemIcons';
-import { QUICK_RADIO_PINGS } from '../data/questsData';
+import { getQuickRadioPings } from '../utils/ukrainianGrammar';
+import { copyTextToClipboard } from '../utils/clipboard';
 
 const REMOTE_COMMANDS: Array<{
   cmd: string;
@@ -54,6 +57,7 @@ interface GameHUDProps {
   role: PlayerRole;
   roomId: string;
   playerNames: Record<PlayerRole, string>;
+  playerGenders: Record<PlayerRole, PlayerGender>;
   connectionStatus: ConnectionStatus;
   partnerOnline: boolean;
   speakingState: Record<PlayerRole, boolean>;
@@ -78,7 +82,9 @@ interface GameHUDProps {
   onToggleAmbient: () => void;
   onTriggerSiren: () => void;
   onSelectItem: (itemId: string | null) => void;
-  onTransferItem: (itemId: string) => void;
+  onPutInHatch: (itemId: string) => void;
+  onTakeFromHatch: () => void;
+  onRequestExit: () => void;
   onStartTalking: () => void;
   onStopTalking: () => void;
   onSendQuickPing: (text: string) => void;
@@ -96,6 +102,7 @@ export const GameHUD: React.FC<GameHUDProps> = ({
   role,
   roomId,
   playerNames,
+  playerGenders,
   connectionStatus,
   partnerOnline,
   speakingState,
@@ -120,7 +127,9 @@ export const GameHUD: React.FC<GameHUDProps> = ({
   onToggleAmbient,
   onTriggerSiren,
   onSelectItem,
-  onTransferItem,
+  onPutInHatch,
+  onTakeFromHatch,
+  onRequestExit,
   onStartTalking,
   onStopTalking,
   onSendQuickPing,
@@ -131,6 +140,7 @@ export const GameHUD: React.FC<GameHUDProps> = ({
   portraitStage,
 }) => {
   const [copiedLink, setCopiedLink] = useState(false);
+  const [manualInviteUrl, setManualInviteUrl] = useState<string | null>(null);
   const [quickPingOpen, setQuickPingOpen] = useState(false);
   const [radioTab, setRadioTab] = useState<'pings' | 'console'>('pings');
   const [consoleInput, setConsoleInput] = useState('');
@@ -339,7 +349,27 @@ export const GameHUD: React.FC<GameHUDProps> = ({
 
   const selectedEntry = visibleInventory.find((e) => e.itemId === selectedItemId) ?? null;
   const selectedItem = selectedEntry ? quest.items[selectedEntry.itemId] : null;
-  const canTransfer = scene.mode === 'split' && selectedItem && selectedItem.transferable;
+  const canPutInHatch =
+    scene.mode === 'split' &&
+    Boolean(selectedItem?.transferable) &&
+    gameState.transferHatchItem === null;
+
+  const incomingHatchItem =
+    scene.mode === 'split' &&
+    gameState.transferHatchItem &&
+    gameState.transferHatchFromRole !== role
+      ? quest.items[gameState.transferHatchItem] ?? null
+      : null;
+
+  const outgoingHatchItem =
+    scene.mode === 'split' &&
+    gameState.transferHatchItem &&
+    gameState.transferHatchFromRole === role
+      ? quest.items[gameState.transferHatchItem] ?? null
+      : null;
+
+  const currentTaskText = scene.taskByRole?.[role] ?? scene.task;
+  const quickRadioPings = getQuickRadioPings(playerGenders[otherRole]);
 
   const radioStatusText = soloTestMode
     ? 'Рація підключена (Соло-тест)'
@@ -354,12 +384,15 @@ export const GameHUD: React.FC<GameHUDProps> = ({
     url.searchParams.set('room', roomId);
     url.searchParams.set('role', otherRole);
     url.searchParams.set('name', quest.players[otherRole].defaultName);
-    try {
-      await navigator.clipboard.writeText(url.toString());
+    url.searchParams.set('gender', quest.players[otherRole].defaultGender);
+    const inviteStr = url.toString();
+    const ok = await copyTextToClipboard(inviteStr);
+    if (ok) {
+      setManualInviteUrl(null);
       setCopiedLink(true);
-      window.setTimeout(() => setCopiedLink(false), 2000);
-    } catch {
-      // Ignore clipboard failure
+      window.setTimeout(() => setCopiedLink(false), 2200);
+    } else {
+      setManualInviteUrl(inviteStr);
     }
   };
 
@@ -436,24 +469,50 @@ export const GameHUD: React.FC<GameHUDProps> = ({
   );
 
   const roomCopyButton = !soloTestMode && (
-    <button
-      type="button"
-      onClick={handleCopyInvite}
-      className="flex items-center gap-1 text-[11px] font-mono-tech text-zinc-300 hover:text-white bg-black/45 hover:bg-black/70 border border-zinc-700/70 rounded-md px-2 py-0.5 transition-colors whitespace-nowrap"
-      title="Скопіювати посилання-запрошення для партнера"
-    >
-      {copiedLink ? (
-        <>
-          <Check className="w-3 h-3 text-emerald-400" />
-          <span className="text-emerald-300">Скопійовано</span>
-        </>
-      ) : (
-        <>
-          <Copy className="w-3 h-3 text-zinc-400" />
-          <span>{roomId}</span>
-        </>
+    <div className="relative">
+      <button
+        type="button"
+        onClick={handleCopyInvite}
+        className="flex items-center gap-1 text-[11px] font-mono-tech text-zinc-300 hover:text-white bg-black/45 hover:bg-black/70 border border-zinc-700/70 rounded-md px-2 py-0.5 transition-colors whitespace-nowrap"
+        title="Скопіювати посилання-запрошення для партнера"
+      >
+        {copiedLink ? (
+          <>
+            <Check className="w-3 h-3 text-emerald-400" />
+            <span className="text-emerald-300">Скопійовано</span>
+          </>
+        ) : (
+          <>
+            <Copy className="w-3 h-3 text-zinc-400" />
+            <span>{roomId}</span>
+          </>
+        )}
+      </button>
+      {manualInviteUrl && (
+        <div className="absolute top-full left-0 mt-1.5 z-40 w-64 rounded-xl bg-[#101521]/98 border border-amber-500/50 p-2 shadow-2xl space-y-1.5">
+          <div className="flex items-center justify-between gap-2 text-[10px] text-amber-300 font-semibold">
+            <span>Скопіюйте посилання (Ctrl+C):</span>
+            <button
+              type="button"
+              onClick={() => setManualInviteUrl(null)}
+              className="text-zinc-400 hover:text-white"
+              aria-label="Закрити"
+            >
+              <X className="w-3 h-3" />
+            </button>
+          </div>
+          <input
+            type="text"
+            readOnly
+            value={manualInviteUrl}
+            autoFocus
+            onFocus={(e) => e.currentTarget.select()}
+            onClick={(e) => e.currentTarget.select()}
+            className="w-full px-2 py-1 rounded-md bg-zinc-950 border border-zinc-700 font-mono-tech text-[10px] text-zinc-100 select-all focus:outline-none"
+          />
+        </div>
       )}
-    </button>
+    </div>
   );
 
   const radioMenuPopoverInner = (
@@ -594,7 +653,7 @@ export const GameHUD: React.FC<GameHUDProps> = ({
             </p>
           )}
           <div className="flex flex-col gap-1">
-            {QUICK_RADIO_PINGS.map((phrase) => (
+            {quickRadioPings.map((phrase) => (
               <button
                 key={phrase}
                 type="button"
@@ -608,10 +667,10 @@ export const GameHUD: React.FC<GameHUDProps> = ({
             ))}
           </div>
         </div>
-      ) : role === 'p2' ? (
+      ) : role === 'p1' ? (
         <div className="space-y-2">
           <p className="text-[11px] text-zinc-400 leading-snug">
-            Введіть коротку команду для віддаленого впливу на вагон {playerNames.p1}:
+            Введіть коротку команду для віддаленого впливу на Тамбур А ({playerNames.p2}):
           </p>
           <form onSubmit={handleConsoleSubmit} className="flex items-center gap-1.5">
             <input
@@ -656,10 +715,10 @@ export const GameHUD: React.FC<GameHUDProps> = ({
       ) : (
         <div className="space-y-1.5 py-1.5 px-1">
           <p className="text-xs font-semibold text-zinc-200">
-            Приймач команд вагона {playerNames.p1}
+            Приймач команд Тамбура А ({playerNames.p2})
           </p>
           <p className="text-[11px] text-zinc-400 leading-relaxed">
-            Сервісна консоль керування світлом і тривогою доступна у сусідньому вагоні у {playerNames.p2} (Гравець 2).
+            Сервісна консоль керування світлом і тривогою доступна у сусідньому Вагоні Б ({playerNames.p1}).
           </p>
           {activeRemoteEffect && (
             <div className="mt-1 px-2.5 py-1.5 rounded-lg bg-amber-950/40 border border-amber-500/40 text-[11px] text-amber-200 font-mono-tech">
@@ -988,10 +1047,10 @@ export const GameHUD: React.FC<GameHUDProps> = ({
                     type="button"
                     onClick={onSwitchSoloRole}
                     className="px-2 py-0.5 rounded-md bg-zinc-900 border border-amber-400/50 text-[11px] font-bold text-amber-300 flex items-center gap-1 whitespace-nowrap"
-                    title="Перемкнути огляд між Сясюнею та Юясею"
+                    title="Перемкнути огляд між гравцями"
                   >
                     <ArrowRightLeft className="w-3 h-3" />
-                    <span>{role === 'p1' ? 'За Юясю' : 'За Сясюню'}</span>
+                    <span>За {playerNames[otherRole]}</span>
                   </button>
                 )}
                 {isMicMuted && (
@@ -1009,32 +1068,46 @@ export const GameHUD: React.FC<GameHUDProps> = ({
               </div>
             </div>
 
-            {/* Right: Compact Avatars (Сясюня & Юяся) */}
-            <div
-              className={`shrink-0 flex items-start gap-2 bg-[#0f1524]/90 px-2 py-1 rounded-xl border transition-colors ${
-                emergencySiren
-                  ? 'border-red-500 shadow-[0_0_20px_rgba(239,68,68,0.55)] animate-siren-flash'
-                  : 'border-zinc-800/90'
-              }`}
-            >
-              <PlayerAvatar
-                role="p1"
-                name={playerNames.p1}
-                avatarUrl={quest.players.p1.avatarUrl}
-                online={role === 'p1' ? true : partnerOnline}
-                speaking={speakingState.p1}
-                isMe={role === 'p1'}
-                size="sm"
-              />
-              <PlayerAvatar
-                role="p2"
-                name={playerNames.p2}
-                avatarUrl={quest.players.p2.avatarUrl}
-                online={role === 'p2' ? true : partnerOnline}
-                speaking={speakingState.p2}
-                isMe={role === 'p2'}
-                size="sm"
-              />
+            {/* Right: Compact Avatars + Exit Button (✕) */}
+            <div className="shrink-0 flex items-start gap-1.5">
+              <div
+                className={`flex items-start gap-2 bg-[#0f1524]/90 px-2 py-1 rounded-xl border transition-colors ${
+                  emergencySiren
+                    ? 'border-red-500 shadow-[0_0_20px_rgba(239,68,68,0.55)] animate-siren-flash'
+                    : 'border-zinc-800/90'
+                }`}
+              >
+                <PlayerAvatar
+                  role="p1"
+                  name={playerNames.p1}
+                  gender={playerGenders.p1}
+                  avatarUrl={quest.players.p1.avatarUrl}
+                  online={role === 'p1' ? true : partnerOnline}
+                  speaking={speakingState.p1}
+                  isMe={role === 'p1'}
+                  size="sm"
+                />
+                <PlayerAvatar
+                  role="p2"
+                  name={playerNames.p2}
+                  gender={playerGenders.p2}
+                  avatarUrl={quest.players.p2.avatarUrl}
+                  online={role === 'p2' ? true : partnerOnline}
+                  speaking={speakingState.p2}
+                  isMe={role === 'p2'}
+                  size="sm"
+                />
+              </div>
+
+              <button
+                type="button"
+                onClick={onRequestExit}
+                className="w-9 h-9 rounded-xl bg-zinc-900/95 hover:bg-red-950/80 border border-zinc-700/80 hover:border-red-500/70 text-zinc-300 hover:text-red-200 flex items-center justify-center transition-colors shrink-0"
+                title="Вийти в головне меню"
+                aria-label="Вийти в головне меню"
+              >
+                <X className="w-4 h-4" />
+              </button>
             </div>
           </div>
 
@@ -1057,7 +1130,7 @@ export const GameHUD: React.FC<GameHUDProps> = ({
               )}
             </div>
             <p className="text-xs font-bold text-zinc-50 leading-snug mt-0.5">
-              {scene.task}
+              {currentTaskText}
             </p>
           </div>
         </header>
@@ -1188,8 +1261,8 @@ export const GameHUD: React.FC<GameHUDProps> = ({
                   ? 'bg-amber-500/20 border-amber-400/80 text-amber-200 shadow-[0_0_14px_rgba(251,191,36,0.28)]'
                   : 'bg-[#121622]/90 hover:bg-[#1a2030] border-zinc-700/80 text-zinc-200'
               }`}
-              title="Спільний блокнот для кодів та підказок"
-              aria-label="Відкрити спільний блокнот"
+              title="Особистий блокнот для ваших нотаток"
+              aria-label="Відкрити особистий блокнот"
             >
               <BookOpen className="w-3.5 h-3.5 text-amber-400 shrink-0" />
               <span>Блокнот</span>
@@ -1221,24 +1294,48 @@ export const GameHUD: React.FC<GameHUDProps> = ({
             </button>
           </div>
 
-          {/* Row 3: Selected Item Action + 4-Slot Inventory Bar */}
+          {/* Row 3: Transfer Hatch Notification + Selected Item Action + 4-Slot Inventory Bar */}
           <div className="space-y-1.5">
+            {incomingHatchItem && (
+              <button
+                type="button"
+                onClick={onTakeFromHatch}
+                className="w-full flex items-center justify-between gap-2 px-3 py-2 rounded-xl bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-400 text-emerald-100 shadow-[0_0_20px_rgba(16,185,129,0.35)] transition-colors"
+              >
+                <span className="flex items-center gap-2 text-xs font-bold truncate">
+                  <PackageCheck className="w-4 h-4 text-emerald-300 shrink-0" />
+                  <span className="truncate">
+                    Шлюз передачі · Отримано предмет! ({incomingHatchItem.name})
+                  </span>
+                </span>
+                <span className="px-2 py-0.5 rounded-md bg-emerald-400 text-zinc-950 font-bold text-[11px] shrink-0">
+                  Забрати
+                </span>
+              </button>
+            )}
+            {outgoingHatchItem && (
+              <div className="flex items-center justify-between gap-2 bg-sky-950/45 border border-sky-500/40 rounded-xl px-3 py-1.5 text-[11px] text-sky-200">
+                <span className="truncate">
+                  У шлюзі очікує «{outgoingHatchItem.name}» для {playerNames[otherRole]}
+                </span>
+              </div>
+            )}
             {selectedItem && (
               <div className="flex items-center justify-between gap-2 bg-[#0e131e] border border-zinc-700/80 rounded-xl px-3 py-1.5 shadow-lg">
                 <span className="text-xs font-semibold text-zinc-100 truncate">
                   {selectedItem.name}
                 </span>
-                {canTransfer && (
+                {canPutInHatch && (
                   <button
                     type="button"
                     onClick={() => {
-                      onTransferItem(selectedItem.id);
+                      onPutInHatch(selectedItem.id);
                       onSelectItem(null);
                     }}
                     className="px-2.5 py-1 rounded-lg bg-sky-500 hover:bg-sky-400 text-zinc-950 font-bold text-xs flex items-center gap-1 transition-colors shrink-0"
                   >
                     <Send className="w-3 h-3" />
-                    <span>Передати</span>
+                    <span>Передати в шлюз</span>
                   </button>
                 )}
               </div>
@@ -1255,7 +1352,7 @@ export const GameHUD: React.FC<GameHUDProps> = ({
   // =========================================================================
   return (
     <div className="pointer-events-none absolute inset-0 z-20 flex flex-col justify-between p-2.5 sm:p-4">
-      {/* TOP BAR: Top-Left Status & Task | Top-Right Avatars */}
+      {/* TOP BAR: Top-Left Status & Task | Top-Right Avatars + Exit */}
       <div className="flex items-start justify-between gap-3">
         {/* Top-Left: Radio Status + Current Task */}
         <div className="pointer-events-auto max-w-[58%] sm:max-w-md space-y-1.5">
@@ -1297,23 +1394,23 @@ export const GameHUD: React.FC<GameHUDProps> = ({
               Завдання · {scene.mode === 'shared' ? 'Спільний вагон' : 'Розділені вагони'}
             </p>
             <p className="text-xs sm:text-sm font-bold text-zinc-50 leading-snug mt-0.5">
-              {scene.task}
+              {currentTaskText}
             </p>
           </div>
         </div>
 
-        {/* Top-Right: Two Circular Player Avatars + Emergency Siren + Mic Muted Indicator */}
+        {/* Top-Right: Two Circular Player Avatars + Exit (✕) + Emergency Siren + Mic Muted */}
         <div className="pointer-events-auto flex flex-col items-end gap-1.5">
-          <div className="flex items-start gap-2.5 sm:gap-3.5">
+          <div className="flex items-start gap-2 sm:gap-2.5">
             {soloTestMode && (
               <button
                 type="button"
                 onClick={onSwitchSoloRole}
                 className="mt-1 px-2.5 py-1.5 rounded-lg bg-zinc-900/90 hover:bg-zinc-800 border border-amber-400/50 text-[11px] font-bold text-amber-300 flex items-center gap-1.5 shadow-lg transition-colors whitespace-nowrap"
-                title="Перемкнути огляд між Сясюнею та Юясею"
+                title="Перемкнути огляд між гравцями"
               >
                 <ArrowRightLeft className="w-3.5 h-3.5" />
-                <span>{role === 'p1' ? 'За Юясю' : 'За Сясюню'}</span>
+                <span>За {playerNames[otherRole]}</span>
               </button>
             )}
 
@@ -1327,6 +1424,7 @@ export const GameHUD: React.FC<GameHUDProps> = ({
               <PlayerAvatar
                 role="p1"
                 name={playerNames.p1}
+                gender={playerGenders.p1}
                 avatarUrl={quest.players.p1.avatarUrl}
                 online={role === 'p1' ? true : partnerOnline}
                 speaking={speakingState.p1}
@@ -1335,12 +1433,24 @@ export const GameHUD: React.FC<GameHUDProps> = ({
               <PlayerAvatar
                 role="p2"
                 name={playerNames.p2}
+                gender={playerGenders.p2}
                 avatarUrl={quest.players.p2.avatarUrl}
                 online={role === 'p2' ? true : partnerOnline}
                 speaking={speakingState.p2}
                 isMe={role === 'p2'}
               />
             </div>
+
+            {/* Exit to Main Menu (✕) Button */}
+            <button
+              type="button"
+              onClick={onRequestExit}
+              className="w-10 h-10 rounded-xl bg-[#0b0f18]/80 hover:bg-red-950/85 backdrop-blur-md border border-zinc-700/80 hover:border-red-500/70 text-zinc-300 hover:text-red-200 flex items-center justify-center shadow-lg transition-colors shrink-0"
+              title="Вийти в головне меню"
+              aria-label="Вийти в головне меню"
+            >
+              <X className="w-5 h-5" />
+            </button>
           </div>
 
           <div className="flex flex-wrap items-center justify-end gap-1.5">
@@ -1504,7 +1614,7 @@ export const GameHUD: React.FC<GameHUDProps> = ({
             <MessageSquare className="w-4 h-4" />
           </button>
 
-          {/* Shared Notebook ('Блокнот') Button */}
+          {/* Personal Notebook ('Блокнот') Button */}
           <button
             type="button"
             onClick={onOpenNotebook}
@@ -1513,8 +1623,8 @@ export const GameHUD: React.FC<GameHUDProps> = ({
                 ? 'bg-amber-500/20 border-amber-400/80 text-amber-200 shadow-[0_0_16px_rgba(251,191,36,0.28)]'
                 : 'bg-[#121622]/90 hover:bg-[#1a2030] border-zinc-700/80 text-zinc-200'
             }`}
-            title="Спільний блокнот для кодів та підказок"
-            aria-label="Відкрити спільний блокнот"
+            title="Особистий блокнот для ваших нотаток"
+            aria-label="Відкрити особистий блокнот"
           >
             <BookOpen className="w-4 h-4 text-amber-400 shrink-0" />
             <span className="text-xs font-bold whitespace-nowrap hidden sm:inline">Блокнот</span>
@@ -1547,25 +1657,49 @@ export const GameHUD: React.FC<GameHUDProps> = ({
           </button>
         </div>
 
-        {/* Bottom-Right: 4-Slot Inventory Bar + Transfer Button in Split Mode */}
+        {/* Bottom-Right: 4-Slot Inventory Bar + Transfer Hatch Controls in Split Mode */}
         <div className="pointer-events-auto flex flex-col items-end gap-1.5">
-          {/* Selected Item Caption & Transfer Button */}
+          {/* Incoming Transfer Hatch Item Banner */}
+          {incomingHatchItem && (
+            <button
+              type="button"
+              onClick={onTakeFromHatch}
+              className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-400 text-emerald-100 shadow-[0_0_22px_rgba(16,185,129,0.45)] transition-colors"
+            >
+              <PackageCheck className="w-4 h-4 text-emerald-300 shrink-0" />
+              <span className="text-xs font-bold whitespace-nowrap">
+                Шлюз передачі · Отримано предмет!
+              </span>
+              <span className="px-2 py-0.5 rounded-md bg-emerald-400 text-zinc-950 font-bold text-[11px] whitespace-nowrap">
+                Забрати
+              </span>
+            </button>
+          )}
+
+          {/* Outgoing Transfer Hatch Status */}
+          {outgoingHatchItem && (
+            <div className="px-2.5 py-1 rounded-lg bg-sky-950/60 border border-sky-500/45 text-[11px] font-semibold text-sky-200 whitespace-nowrap">
+              У шлюзі: {outgoingHatchItem.name} (очікує {playerNames[otherRole]})
+            </div>
+          )}
+
+          {/* Selected Item Caption & Transfer to Hatch Button */}
           {selectedItem && (
             <div className="flex items-center gap-2 bg-[#0e131e]/95 border border-zinc-700/80 rounded-xl px-2.5 py-1.5 shadow-xl">
               <span className="text-xs font-semibold text-zinc-100 whitespace-nowrap">
                 {selectedItem.name}
               </span>
-              {canTransfer && (
+              {canPutInHatch && (
                 <button
                   type="button"
                   onClick={() => {
-                    onTransferItem(selectedItem.id);
+                    onPutInHatch(selectedItem.id);
                     onSelectItem(null);
                   }}
                   className="px-2.5 py-1 rounded-lg bg-sky-500 hover:bg-sky-400 text-zinc-950 font-bold text-xs flex items-center gap-1 transition-colors whitespace-nowrap"
                 >
                   <Send className="w-3 h-3" />
-                  <span>Передати</span>
+                  <span>Передати в шлюз</span>
                 </button>
               )}
             </div>

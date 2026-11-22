@@ -2,8 +2,10 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import Peer, { DataConnection, MediaConnection } from 'peerjs';
 import {
   EmergencySirenAlert,
+  GameMutationAction,
   GameState,
   PeerMessage,
+  PlayerGender,
   PlayerRole,
   PointerPing,
   QuestConfig,
@@ -11,7 +13,11 @@ import {
   RemoteEffectKind,
   RemoteSceneEffect,
 } from '../types/game';
-import { applyGameMutation, createInitialGameState } from '../utils/gameReducer';
+import {
+  applyGameMutation,
+  createInitialGameState,
+  mergeRemoteGameState,
+} from '../utils/gameReducer';
 import {
   playDoorReleaseVictory,
   playDoorSlam,
@@ -32,6 +38,7 @@ interface UsePeerMultiplayerOptions {
   roomId: string | null;
   role: PlayerRole;
   playerName: string;
+  playerGender: PlayerGender;
   quest: QuestConfig;
   soloTestMode: boolean;
 }
@@ -40,13 +47,17 @@ export function usePeerMultiplayer({
   roomId,
   role,
   playerName,
+  playerGender,
   quest,
   soloTestMode,
 }: UsePeerMultiplayerOptions) {
+  const otherRole: PlayerRole = role === 'p1' ? 'p2' : 'p1';
+
   const [gameState, setGameState] = useState<GameState>(() => createInitialGameState(quest));
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>('idle');
-  const [partnerName, setPartnerName] = useState<string>(
-    quest.players[role === 'p1' ? 'p2' : 'p1'].defaultName
+  const [partnerName, setPartnerName] = useState<string>(quest.players[otherRole].defaultName);
+  const [partnerGender, setPartnerGender] = useState<PlayerGender>(
+    quest.players[otherRole].defaultGender
   );
   const [partnerOnline, setPartnerOnline] = useState<boolean>(false);
   const [speakingState, setSpeakingState] = useState<Record<PlayerRole, boolean>>({
@@ -86,7 +97,30 @@ export function usePeerMultiplayer({
     isMicMutedRef.current = isMicMuted;
   }, [isMicMuted]);
 
-  const otherRole: PlayerRole = role === 'p1' ? 'p2' : 'p1';
+  // Keep partner default name/gender aligned when switching roles before connecting
+  useEffect(() => {
+    if (!partnerOnline || soloTestMode) {
+      setPartnerName(quest.players[otherRole].defaultName);
+      setPartnerGender(quest.players[otherRole].defaultGender);
+    }
+  }, [otherRole, partnerOnline, quest.players, soloTestMode]);
+
+  // Keep local player profile synced into gameState.players
+  useEffect(() => {
+    setGameState((prev) => {
+      const curr = prev.players[role];
+      if (curr.name === playerName && curr.gender === playerGender) return prev;
+      const next: GameState = {
+        ...prev,
+        players: {
+          ...prev.players,
+          [role]: { name: playerName, gender: playerGender },
+        },
+      };
+      gameStateRef.current = next;
+      return next;
+    });
+  }, [playerGender, playerName, role]);
 
   // Ensure a hidden <audio> element exists to play incoming remote radio voice
   useEffect(() => {
@@ -184,42 +218,43 @@ export function usePeerMultiplayer({
     }, 5200);
   }, []);
 
-  const playSoundForAction = useCallback(
-    (action: Extract<PeerMessage, { type: 'GAME_MUTATION' }>['action']) => {
-      switch (action.kind) {
-        case 'COLLECT_ITEM':
-        case 'UNLOCK_CONTAINER':
-          playItemPickup();
-          break;
-        case 'SOLVE_KEYPAD':
-        case 'INSERT_FUSE':
-          playSuccessUnlock();
-          break;
-        case 'TRANSFER_ITEM':
-          playTransferWhoosh();
-          break;
-        case 'START_TRANSITION':
-          playDoorSlam();
-          break;
-        case 'COMPLETE_ESCAPE':
-          playDoorReleaseVictory();
-          break;
-        default:
-          break;
-      }
-    },
-    []
-  );
+  const playSoundForAction = useCallback((action: GameMutationAction) => {
+    switch (action.kind) {
+      case 'COLLECT_ITEM':
+      case 'UNLOCK_CONTAINER':
+      case 'TAKE_FROM_HATCH':
+        playItemPickup();
+        break;
+      case 'SOLVE_KEYPAD':
+      case 'INSERT_FUSE':
+        playSuccessUnlock();
+        break;
+      case 'PUT_IN_HATCH':
+        playTransferWhoosh();
+        break;
+      case 'START_TRANSITION':
+        playDoorSlam();
+        break;
+      case 'COMPLETE_ESCAPE':
+        playDoorReleaseVictory();
+        break;
+      default:
+        break;
+    }
+  }, []);
 
-  // Dispatch a game state mutation locally AND sync to partner
+  // Dispatch a game state mutation locally AND immediately broadcast full gameState to partner
   const dispatchMutation = useCallback(
-    (action: Extract<PeerMessage, { type: 'GAME_MUTATION' }>['action']) => {
+    (action: GameMutationAction) => {
       playSoundForAction(action);
       if (action.kind !== 'START_TIMER') {
         triggerPeerActivityPulse();
       }
-      setGameState((prev) => applyGameMutation(prev, action, quest));
+      const nextState = applyGameMutation(gameStateRef.current, action, quest);
+      gameStateRef.current = nextState;
+      setGameState(nextState);
       sendMessage({ type: 'GAME_MUTATION', action });
+      sendMessage({ type: 'FULL_STATE', state: nextState }, true);
     },
     [playSoundForAction, quest, sendMessage, triggerPeerActivityPulse]
   );
@@ -238,31 +273,59 @@ export function usePeerMultiplayer({
         setPingMs((prev) => (prev === null ? rtt : Math.round(prev * 0.35 + rtt * 0.65)));
         return;
       }
+
+      if (msg.type === 'FULL_STATE') {
+        const current = gameStateRef.current;
+        const incoming = msg.state;
+        const merged = mergeRemoteGameState(current, incoming, role);
+        if (merged !== current) {
+          gameStateRef.current = merged;
+          setGameState(merged);
+          const remoteProfile = merged.players[otherRole];
+          if (remoteProfile) {
+            setPartnerName(remoteProfile.name);
+            setPartnerGender(remoteProfile.gender);
+          }
+        } else if (
+          typeof incoming.stateVersion === 'number' &&
+          incoming.stateVersion < current.stateVersion
+        ) {
+          // Peer is behind our stateVersion — immediately push our newer full state back
+          sendMessage({ type: 'FULL_STATE', state: current }, true);
+        }
+        return;
+      }
+
       triggerPeerActivityPulse();
 
       switch (msg.type) {
         case 'PLAYER_HELLO': {
           setPartnerName(msg.name);
+          setPartnerGender(msg.gender);
           setPartnerOnline(true);
-          // Host sends full state snapshot on join
+          const updated: GameState = {
+            ...gameStateRef.current,
+            players: {
+              ...gameStateRef.current.players,
+              [msg.role]: { name: msg.name, gender: msg.gender },
+            },
+          };
+          gameStateRef.current = updated;
+          setGameState(updated);
           if (role === 'p1') {
-            sendMessage({ type: 'FULL_STATE', state: gameStateRef.current });
+            sendMessage({ type: 'FULL_STATE', state: updated }, true);
           }
           break;
         }
         case 'REQUEST_STATE': {
-          if (role === 'p1') {
-            sendMessage({ type: 'FULL_STATE', state: gameStateRef.current });
-          }
-          break;
-        }
-        case 'FULL_STATE': {
-          setGameState(msg.state);
+          sendMessage({ type: 'FULL_STATE', state: gameStateRef.current }, true);
           break;
         }
         case 'GAME_MUTATION': {
           playSoundForAction(msg.action);
-          setGameState((prev) => applyGameMutation(prev, msg.action, quest));
+          const next = applyGameMutation(gameStateRef.current, msg.action, quest);
+          gameStateRef.current = next;
+          setGameState(next);
           break;
         }
         case 'POINTER': {
@@ -270,13 +333,18 @@ export function usePeerMultiplayer({
           break;
         }
         case 'LEVER_HOLD': {
-          setGameState((prev) => ({
-            ...prev,
-            leverHold: {
-              ...prev.leverHold,
-              [msg.role]: msg.holding,
-            },
-          }));
+          setGameState((prev) => {
+            if (prev.leverHold[msg.role] === msg.holding) return prev;
+            const next = {
+              ...prev,
+              leverHold: {
+                ...prev.leverHold,
+                [msg.role]: msg.holding,
+              },
+            };
+            gameStateRef.current = next;
+            return next;
+          });
           break;
         }
         case 'PTT_STATUS': {
@@ -298,7 +366,7 @@ export function usePeerMultiplayer({
           activateRemoteEffect(msg.effect);
           pushRadioMessage({
             id: msg.effect.id,
-            fromRole: 'p2',
+            fromRole: otherRole,
             fromName: msg.effect.fromName,
             text: `Команда [${msg.effect.commandText}]: ${msg.effect.label}`,
             timestamp: msg.effect.timestamp,
@@ -323,6 +391,7 @@ export function usePeerMultiplayer({
       activateEmergencySiren,
       activateRemoteEffect,
       addPointerPing,
+      otherRole,
       playSoundForAction,
       pushRadioMessage,
       quest,
@@ -331,6 +400,63 @@ export function usePeerMultiplayer({
       triggerPeerActivityPulse,
     ]
   );
+
+  // Cleanly tear down PeerJS, media tracks, timers, and reset session state (e.g. Exit to Main Menu)
+  const disconnectPeer = useCallback(() => {
+    if (reconnectTimerRef.current) {
+      window.clearInterval(reconnectTimerRef.current);
+      reconnectTimerRef.current = null;
+    }
+    if (waveformRafRef.current) {
+      cancelAnimationFrame(waveformRafRef.current);
+      waveformRafRef.current = null;
+    }
+    if (mediaCallRef.current) {
+      try {
+        mediaCallRef.current.close();
+      } catch {
+        // ignore
+      }
+      mediaCallRef.current = null;
+    }
+    if (localStreamRef.current) {
+      localStreamRef.current.getTracks().forEach((t) => t.stop());
+      localStreamRef.current = null;
+    }
+    if (dataConnRef.current) {
+      try {
+        dataConnRef.current.close();
+      } catch {
+        // ignore
+      }
+      dataConnRef.current = null;
+    }
+    if (peerRef.current) {
+      try {
+        peerRef.current.destroy();
+      } catch {
+        // ignore
+      }
+      peerRef.current = null;
+    }
+    if (remoteAudioRef.current) {
+      remoteAudioRef.current.srcObject = null;
+    }
+    analyserRef.current = null;
+    setConnectionStatus('idle');
+    setPartnerOnline(false);
+    setPingMs(null);
+    setSpeakingState({ p1: false, p2: false });
+    setPointerPings([]);
+    setRadioMessages([]);
+    setRadioChatLog([]);
+    setActiveRemoteEffect(null);
+    setEmergencySiren(null);
+    setIsMicMuted(false);
+    const fresh = createInitialGameState(quest);
+    gameStateRef.current = fresh;
+    setGameState(fresh);
+  }, [quest]);
 
   // Establish PeerJS P2P connection when roomId is active (and not in soloTestMode)
   useEffect(() => {
@@ -372,7 +498,12 @@ export function usePeerMultiplayer({
         if (cancelled) return;
         setConnectionStatus('connected');
         setPartnerOnline(true);
-        conn.send({ type: 'PLAYER_HELLO', role, name: playerName } as PeerMessage);
+        conn.send({
+          type: 'PLAYER_HELLO',
+          role,
+          name: playerName,
+          gender: playerGender,
+        } as PeerMessage);
         if (role === 'p1') {
           conn.send({ type: 'FULL_STATE', state: gameStateRef.current } as PeerMessage);
         } else {
@@ -394,10 +525,14 @@ export function usePeerMultiplayer({
         setConnectionStatus('waiting');
         setPingMs(null);
         setSpeakingState({ p1: false, p2: false });
-        setGameState((prev) => ({
-          ...prev,
-          leverHold: { ...prev.leverHold, [otherRole]: false },
-        }));
+        setGameState((prev) => {
+          const next = {
+            ...prev,
+            leverHold: { ...prev.leverHold, [otherRole]: false },
+          };
+          gameStateRef.current = next;
+          return next;
+        });
       });
 
       conn.on('error', () => {
@@ -454,7 +589,6 @@ export function usePeerMultiplayer({
     peer.on('error', (err) => {
       if (cancelled) return;
       if (err.type === 'peer-unavailable') {
-        // Host not online yet; p2 timer will keep retrying cleanly
         setConnectionStatus('waiting');
       } else if (err.type === 'unavailable-id') {
         setConnectionStatus('error');
@@ -498,7 +632,20 @@ export function usePeerMultiplayer({
       peer.destroy();
       peerRef.current = null;
     };
-  }, [roomId, role, otherRole, playerName, soloTestMode, handleIncomingData]);
+  }, [roomId, role, otherRole, playerName, playerGender, soloTestMode, handleIncomingData]);
+
+  // 2-Second Heartbeat Full-State Sync so no item transfer or puzzle mutation packet is ever lost
+  useEffect(() => {
+    if (!roomId || soloTestMode || !partnerOnline || connectionStatus !== 'connected') {
+      return;
+    }
+
+    const heartbeatId = window.setInterval(() => {
+      sendMessage({ type: 'FULL_STATE', state: gameStateRef.current }, true);
+    }, 2000);
+
+    return () => window.clearInterval(heartbeatId);
+  }, [connectionStatus, partnerOnline, roomId, sendMessage, soloTestMode]);
 
   // Random intermittent radio static crackles while either player is transmitting
   useEffect(() => {
@@ -612,7 +759,6 @@ export function usePeerMultiplayer({
     sendMessage({ type: 'PTT_STATUS', role, speaking: true });
 
     if (soloTestMode) {
-      // Animate waveform in solo preview mode
       let frame = 0;
       const tick = () => {
         frame += 0.25;
@@ -685,7 +831,7 @@ export function usePeerMultiplayer({
     }
   }, [role, sendMessage, stopWaveformLoop]);
 
-  // Toggle local Mute ('Режим тиші'): disables microphone tracks immediately even outside PTT
+  // Toggle local Mute ('Режим тиші')
   const toggleMicMute = useCallback(() => {
     setIsMicMuted((prev) => {
       const nextMuted = !prev;
@@ -731,20 +877,22 @@ export function usePeerMultiplayer({
       const targetRole = overrideRole ?? role;
       setGameState((prev) => {
         if (prev.leverHold[targetRole] === holding) return prev;
-        return {
+        const next = {
           ...prev,
           leverHold: {
             ...prev.leverHold,
             [targetRole]: holding,
           },
         };
+        gameStateRef.current = next;
+        return next;
       });
       sendMessage({ type: 'LEVER_HOLD', role: targetRole, holding });
     },
     [role, sendMessage]
   );
 
-  // Fallback quick-ping text radio message (with random packet-drop errors under distance / low battery)
+  // Fallback quick-ping text radio message
   const sendQuickPing = useCallback(
     (
       text: string,
@@ -820,7 +968,7 @@ export function usePeerMultiplayer({
     [pushRadioMessage, role]
   );
 
-  // Player 2 remote console command affecting Player 1's scene components
+  // Remote console command affecting partner's vestibule
   const sendRemoteCommand = useCallback(
     (kind: RemoteEffectKind, commandText: string, label: string) => {
       playRadioClick(true);
@@ -873,6 +1021,7 @@ export function usePeerMultiplayer({
     gameState,
     connectionStatus,
     partnerName,
+    partnerGender,
     partnerOnline,
     speakingState,
     micPermission,
@@ -886,6 +1035,7 @@ export function usePeerMultiplayer({
     emergencySiren,
     pingMs,
     dispatchMutation,
+    disconnectPeer,
     startTalking,
     stopTalking,
     toggleMicMute,

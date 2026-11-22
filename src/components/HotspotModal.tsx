@@ -4,21 +4,32 @@ import {
   Delete,
   KeyRound,
   Lock,
+  PackageCheck,
   Radio,
+  Send,
   Smartphone,
   Wrench,
   X,
   Zap,
 } from 'lucide-react';
-import { GameState, HotspotConfig, PlayerRole, QuestConfig } from '../types/game';
+import {
+  GameState,
+  HotspotConfig,
+  PlayerGender,
+  PlayerRole,
+  QuestConfig,
+} from '../types/game';
 import { ItemIcon } from './ItemIcons';
 import { playErrorBuzz, playKeypadTone } from '../utils/soundFx';
+import { g } from '../utils/ukrainianGrammar';
 
 interface HotspotModalProps {
   hotspot: HotspotConfig;
   quest: QuestConfig;
   gameState: GameState;
   role: PlayerRole;
+  playerNames: Record<PlayerRole, string>;
+  playerGenders: Record<PlayerRole, PlayerGender>;
   sceneMode: 'shared' | 'split';
   soloTestMode: boolean;
   onClose: () => void;
@@ -26,6 +37,8 @@ interface HotspotModalProps {
   onUnlockContainer: (hotspot: HotspotConfig) => void;
   onSolveKeypad: (hotspot: HotspotConfig) => void;
   onInsertFuse: (hotspot: HotspotConfig) => void;
+  onPutInHatch: (itemId: string) => void;
+  onTakeFromHatch: () => void;
   onTriggerTransition: (hotspot: HotspotConfig) => void;
   onSetLeverHolding: (holding: boolean, overrideRole?: PlayerRole) => void;
   onCompleteEscape: () => void;
@@ -36,6 +49,8 @@ export const HotspotModal: React.FC<HotspotModalProps> = ({
   quest,
   gameState,
   role,
+  playerNames,
+  playerGenders,
   sceneMode,
   soloTestMode,
   onClose,
@@ -43,6 +58,8 @@ export const HotspotModal: React.FC<HotspotModalProps> = ({
   onUnlockContainer,
   onSolveKeypad,
   onInsertFuse,
+  onPutInHatch,
+  onTakeFromHatch,
   onTriggerTransition,
   onSetLeverHolding,
   onCompleteEscape,
@@ -51,6 +68,7 @@ export const HotspotModal: React.FC<HotspotModalProps> = ({
   const [keypadError, setKeypadError] = useState(false);
   const [holdProgress, setHoldProgress] = useState(0);
 
+  const otherRole: PlayerRole = role === 'p1' ? 'p2' : 'p1';
   const isSolved = gameState.solvedHotspots.includes(hotspot.id);
   const myAccessibleItems = gameState.inventory.filter(
     (entry) => sceneMode === 'shared' || entry.owner === 'shared' || entry.owner === role
@@ -59,9 +77,21 @@ export const HotspotModal: React.FC<HotspotModalProps> = ({
     ? myAccessibleItems.some((e) => e.itemId === hotspot.requiredItemId)
     : false;
 
+  const lockedByClue = Boolean(hotspot.requiresClueRead && !gameState.scene1.clueRead);
+
   const missingFlags = (hotspot.requiredFlags ?? []).filter((f) => !gameState.flags.includes(f));
   const leversReady = missingFlags.length === 0;
   const bothHolding = gameState.leverHold.p1 && gameState.leverHold.p2;
+
+  const hatchItem = gameState.transferHatchItem
+    ? quest.items[gameState.transferHatchItem] ?? null
+    : null;
+  const isIncomingHatch = Boolean(hatchItem && gameState.transferHatchFromRole !== role);
+  const isOutgoingHatch = Boolean(hatchItem && gameState.transferHatchFromRole === role);
+  const transferableInventoryItem =
+    myAccessibleItems
+      .map((entry) => quest.items[entry.itemId])
+      .find((item) => Boolean(item?.transferable)) ?? null;
 
   // Release lever automatically if modal closes
   useEffect(() => {
@@ -69,11 +99,11 @@ export const HotspotModal: React.FC<HotspotModalProps> = ({
       if (hotspot.type === 'coop_lever') {
         onSetLeverHolding(false, role);
         if (soloTestMode) {
-          onSetLeverHolding(false, role === 'p1' ? 'p2' : 'p1');
+          onSetLeverHolding(false, otherRole);
         }
       }
     };
-  }, [hotspot.type, onSetLeverHolding, role, soloTestMode]);
+  }, [hotspot.type, onSetLeverHolding, otherRole, role, soloTestMode]);
 
   // Synchronized 3-second hold timer when BOTH players hold their levers
   useEffect(() => {
@@ -134,6 +164,13 @@ export const HotspotModal: React.FC<HotspotModalProps> = ({
     setKeypadError(false);
   };
 
+  const releaseLever = () => {
+    onSetLeverHolding(false, role);
+    if (soloTestMode) {
+      onSetLeverHolding(false, otherRole);
+    }
+  };
+
   return (
     <div
       className="fixed inset-0 z-40 flex items-center justify-center p-3 sm:p-5 bg-black/75 backdrop-blur-sm"
@@ -189,46 +226,63 @@ export const HotspotModal: React.FC<HotspotModalProps> = ({
             </>
           )}
 
-          {/* PICKUP (Trashbin / Luggage rack) */}
+          {/* PICKUP (Trashbin / Luggage rack — strictly gated by clueRead if required) */}
           {hotspot.type === 'pickup' && (
             <>
-              <p className="text-sm text-zinc-300 leading-relaxed">
-                {isSolved ? hotspot.alreadyTakenText : hotspot.description}
-              </p>
-              {!isSolved && hotspot.givesItemId && quest.items[hotspot.givesItemId] && (
-                <div className="flex items-center gap-3.5 p-3.5 rounded-xl bg-zinc-900/90 border border-amber-500/35">
-                  <div className="w-12 h-12 rounded-lg bg-zinc-800 flex items-center justify-center shrink-0">
-                    <ItemIcon icon={quest.items[hotspot.givesItemId].icon} className="w-8 h-8" />
-                  </div>
-                  <div className="min-w-0">
-                    <div className="text-sm font-bold text-amber-300">
-                      {quest.items[hotspot.givesItemId].name}
-                    </div>
-                    <div className="text-xs text-zinc-400 leading-snug">
-                      {quest.items[hotspot.givesItemId].description}
-                    </div>
-                  </div>
-                </div>
-              )}
-              {!isSolved && hotspot.givesItemId ? (
-                <button
-                  type="button"
-                  onClick={() => {
-                    onCollectItem(hotspot, hotspot.givesItemId!);
-                    onClose();
-                  }}
-                  className="w-full py-2.5 px-4 rounded-xl bg-amber-500 hover:bg-amber-400 text-zinc-950 font-bold text-sm transition-colors"
-                >
-                  Взяти «{quest.items[hotspot.givesItemId]?.name}»
-                </button>
+              {lockedByClue ? (
+                <>
+                  <p className="text-sm text-zinc-300 leading-relaxed">
+                    {hotspot.beforeClueText ?? hotspot.description}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={onClose}
+                    className="w-full py-2.5 px-4 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-sm font-semibold text-zinc-100 transition-colors"
+                  >
+                    Закрити
+                  </button>
+                </>
               ) : (
-                <button
-                  type="button"
-                  onClick={onClose}
-                  className="w-full py-2.5 px-4 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-sm font-semibold text-zinc-100 transition-colors"
-                >
-                  Закрити
-                </button>
+                <>
+                  <p className="text-sm text-zinc-300 leading-relaxed">
+                    {isSolved ? hotspot.alreadyTakenText : hotspot.description}
+                  </p>
+                  {!isSolved && hotspot.givesItemId && quest.items[hotspot.givesItemId] && (
+                    <div className="flex items-center gap-3.5 p-3.5 rounded-xl bg-zinc-900/90 border border-amber-500/35">
+                      <div className="w-12 h-12 rounded-lg bg-zinc-800 flex items-center justify-center shrink-0">
+                        <ItemIcon icon={quest.items[hotspot.givesItemId].icon} className="w-8 h-8" />
+                      </div>
+                      <div className="min-w-0">
+                        <div className="text-sm font-bold text-amber-300">
+                          {quest.items[hotspot.givesItemId].name}
+                        </div>
+                        <div className="text-xs text-zinc-400 leading-snug">
+                          {quest.items[hotspot.givesItemId].description}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                  {!isSolved && hotspot.givesItemId ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onCollectItem(hotspot, hotspot.givesItemId!);
+                        onClose();
+                      }}
+                      className="w-full py-2.5 px-4 rounded-xl bg-amber-500 hover:bg-amber-400 text-zinc-950 font-bold text-sm transition-colors"
+                    >
+                      Взяти «{quest.items[hotspot.givesItemId]?.name}»
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={onClose}
+                      className="w-full py-2.5 px-4 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-sm font-semibold text-zinc-100 transition-colors"
+                    >
+                      Закрити
+                    </button>
+                  )}
+                </>
               )}
             </>
           )}
@@ -311,7 +365,107 @@ export const HotspotModal: React.FC<HotspotModalProps> = ({
             </>
           )}
 
-          {/* KEYPAD (NOTBREMSE 4-digit code for Сясюня) */}
+          {/* TRANSFER HATCH (Persistent state-backed hatch between Carriage B and Vestibule A) */}
+          {hotspot.type === 'transfer_hatch' && (
+            <>
+              <p className="text-sm text-zinc-300 leading-relaxed">{hotspot.description}</p>
+
+              {isIncomingHatch && hatchItem ? (
+                <>
+                  <div className="rounded-xl bg-emerald-950/40 border border-emerald-400/60 p-4 space-y-3 shadow-[0_0_24px_rgba(16,185,129,0.2)]">
+                    <div className="flex items-center gap-2 text-xs font-mono-tech font-bold text-emerald-300 uppercase tracking-wider">
+                      <PackageCheck className="w-4 h-4 shrink-0" />
+                      <span>Отримано предмет!</span>
+                    </div>
+                    <div className="flex items-center gap-3.5">
+                      <div className="w-12 h-12 rounded-lg bg-zinc-900 border border-emerald-500/40 flex items-center justify-center shrink-0">
+                        <ItemIcon icon={hatchItem.icon} className="w-8 h-8" />
+                      </div>
+                      <div className="min-w-0">
+                        <div className="text-sm font-bold text-white">{hatchItem.name}</div>
+                        <div className="text-xs text-zinc-300 leading-snug">
+                          {hatchItem.description}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onTakeFromHatch();
+                      onClose();
+                    }}
+                    className="w-full py-3 px-4 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-zinc-950 font-bold text-sm flex items-center justify-center gap-2 transition-colors"
+                  >
+                    <PackageCheck className="w-4 h-4" />
+                    Забрати «{hatchItem.name}»
+                  </button>
+                </>
+              ) : isOutgoingHatch && hatchItem ? (
+                <>
+                  <div className="flex items-center gap-3.5 p-3.5 rounded-xl bg-sky-950/35 border border-sky-500/40">
+                    <div className="w-12 h-12 rounded-lg bg-zinc-900 flex items-center justify-center shrink-0">
+                      <ItemIcon icon={hatchItem.icon} className="w-8 h-8" />
+                    </div>
+                    <div className="min-w-0 text-xs sm:text-sm text-sky-100 leading-snug">
+                      У шлюзі лежить <strong>«{hatchItem.name}»</strong>. Очікуємо, поки{' '}
+                      {playerNames[otherRole]} {g(playerGenders[otherRole], 'забере', 'забере')}{' '}
+                      предмет зі свого боку.
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={onClose}
+                    className="w-full py-2.5 px-4 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-sm font-semibold text-zinc-100 transition-colors"
+                  >
+                    Закрити
+                  </button>
+                </>
+              ) : transferableInventoryItem ? (
+                <>
+                  <div className="flex items-center gap-3.5 p-3.5 rounded-xl bg-zinc-900/90 border border-sky-500/35">
+                    <div className="w-12 h-12 rounded-lg bg-zinc-800 flex items-center justify-center shrink-0">
+                      <ItemIcon icon={transferableInventoryItem.icon} className="w-8 h-8" />
+                    </div>
+                    <div className="min-w-0">
+                      <div className="text-sm font-bold text-sky-300">
+                        {transferableInventoryItem.name}
+                      </div>
+                      <div className="text-xs text-zinc-400 leading-snug">
+                        Готово до передачі партнеру ({playerNames[otherRole]}) через шлюз.
+                      </div>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onPutInHatch(transferableInventoryItem.id);
+                      onClose();
+                    }}
+                    className="w-full py-3 px-4 rounded-xl bg-sky-500 hover:bg-sky-400 text-zinc-950 font-bold text-sm flex items-center justify-center gap-2 transition-colors"
+                  >
+                    <Send className="w-4 h-4" />
+                    Передати «{transferableInventoryItem.name}» в шлюз
+                  </button>
+                </>
+              ) : (
+                <>
+                  <div className="p-3.5 rounded-xl bg-zinc-900/80 border border-zinc-800 text-xs sm:text-sm text-zinc-300">
+                    Шлюз порожній. Покладіть сюди предмет або дочекайтеся передачі від партнера.
+                  </div>
+                  <button
+                    type="button"
+                    onClick={onClose}
+                    className="w-full py-2.5 px-4 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-sm font-semibold text-zinc-100 transition-colors"
+                  >
+                    Закрити
+                  </button>
+                </>
+              )}
+            </>
+          )}
+
+          {/* KEYPAD (NOTBREMSE 4-digit code for Vestibule A — zero spoiler hints) */}
           {hotspot.type === 'keypad' && (
             <>
               <p className="text-sm text-zinc-300 leading-relaxed">
@@ -329,7 +483,15 @@ export const HotspotModal: React.FC<HotspotModalProps> = ({
               >
                 <div className="flex items-center justify-between text-[11px] font-mono-tech text-zinc-400">
                   <span>{hotspot.keypadLabel ?? 'NOTBREMSE'}</span>
-                  <span className={isSolved ? 'text-emerald-400' : keypadError ? 'text-red-400' : 'text-amber-400'}>
+                  <span
+                    className={
+                      isSolved
+                        ? 'text-emerald-400'
+                        : keypadError
+                          ? 'text-red-400'
+                          : 'text-amber-400'
+                    }
+                  >
                     {isSolved ? 'РОЗБЛОКОВАНО' : keypadError ? 'ПОМИЛКА КОДУ' : 'ОЧІКУВАННЯ'}
                   </span>
                 </div>
@@ -337,7 +499,7 @@ export const HotspotModal: React.FC<HotspotModalProps> = ({
                 {/* 4-digit LCD display */}
                 <div className="grid grid-cols-4 gap-2">
                   {[0, 1, 2, 3].map((idx) => {
-                    const char = isSolved ? hotspot.keypadCode?.[idx] : keypadValue[idx];
+                    const char = isSolved ? '✓' : keypadValue[idx];
                     return (
                       <div
                         key={idx}
@@ -405,7 +567,7 @@ export const HotspotModal: React.FC<HotspotModalProps> = ({
             </>
           )}
 
-          {/* FUSE SLOT (Сясюня inserts Fuse received from Юяся) */}
+          {/* FUSE SLOT (Vestibule A inserts Fuse received via Transfer Hatch) */}
           {hotspot.type === 'fuse_slot' && (
             <>
               <p className="text-sm text-zinc-300 leading-relaxed">
@@ -415,7 +577,7 @@ export const HotspotModal: React.FC<HotspotModalProps> = ({
               {isSolved ? (
                 <div className="flex items-center gap-3 p-3.5 rounded-xl bg-emerald-950/40 border border-emerald-500/40 text-sm text-emerald-200">
                   <Zap className="w-5 h-5 text-emerald-400 shrink-0" />
-                  <span>Запобіжник 32А вставлено. Аварійні важелі під напругою!</span>
+                  <span>Запобіжник 32A вставлено. Аварійні важелі під напругою!</span>
                 </div>
               ) : hasRequiredItem ? (
                 <button
@@ -427,7 +589,7 @@ export const HotspotModal: React.FC<HotspotModalProps> = ({
                   className="w-full py-3 px-4 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-zinc-950 font-bold text-sm flex items-center justify-center gap-2 transition-colors"
                 >
                   <Zap className="w-4 h-4" />
-                  Вставити «Запобіжник» у щиток
+                  Вставити «Запобіжник 32A» у щиток
                 </button>
               ) : (
                 <div className="flex items-start gap-2.5 p-3.5 rounded-xl bg-amber-950/35 border border-amber-500/35 text-xs sm:text-sm text-amber-200">
@@ -448,7 +610,7 @@ export const HotspotModal: React.FC<HotspotModalProps> = ({
             </>
           )}
 
-          {/* OVERHEAD LED DISPLAY (Юяся reads 4719 and dictates via PTT radio) */}
+          {/* OVERHEAD LED DISPLAY (Carriage B reads code and dictates via PTT radio) */}
           {hotspot.type === 'led_display' && (
             <>
               <p className="text-sm text-zinc-300 leading-relaxed">{hotspot.description}</p>
@@ -481,12 +643,12 @@ export const HotspotModal: React.FC<HotspotModalProps> = ({
             </>
           )}
 
-          {/* CO-OP SIMULTANEOUS LEVER HOLD (3 seconds together!) */}
+          {/* CO-OP SIMULTANEOUS LEVER HOLD (3 seconds together, mobile-safe) */}
           {hotspot.type === 'coop_lever' && (
             <>
               <p className="text-sm text-zinc-300 leading-relaxed">{hotspot.description}</p>
 
-              {/* Prerequisites checklist */}
+              {/* Prerequisites checklist (spoiler-free) */}
               <div className="grid grid-cols-2 gap-2 text-xs">
                 <div
                   className={`p-2.5 rounded-lg border flex items-center gap-2 ${
@@ -500,7 +662,7 @@ export const HotspotModal: React.FC<HotspotModalProps> = ({
                   ) : (
                     <Lock className="w-4 h-4 shrink-0" />
                   )}
-                  <span>Код 4719</span>
+                  <span>Код NOTBREMSE</span>
                 </div>
                 <div
                   className={`p-2.5 rounded-lg border flex items-center gap-2 ${
@@ -514,35 +676,35 @@ export const HotspotModal: React.FC<HotspotModalProps> = ({
                   ) : (
                     <Lock className="w-4 h-4 shrink-0" />
                   )}
-                  <span>Запобіжник</span>
+                  <span>Запобіжник 32A</span>
                 </div>
               </div>
 
               {!leversReady ? (
                 <div className="p-3.5 rounded-xl bg-amber-950/35 border border-amber-500/35 text-xs sm:text-sm text-amber-200">
-                  Важелі ще заблоковані. Спочатку Сясюня має ввести код 4719 у боксі NOTBREMSE та вставити запобіжник у щиток.
+                  Важелі ще заблоковані. Спочатку у Тамбурі А потрібно ввести 4-значний код у боксі NOTBREMSE та вставити запобіжник 32A у щиток.
                 </div>
               ) : (
                 <div className="space-y-3.5">
                   {/* Live status of both players */}
                   <div className="grid grid-cols-2 gap-2.5 text-xs">
                     <div
-                      className={`px-3 py-2 rounded-lg border text-center font-semibold transition-colors ${
+                      className={`px-3 py-2 rounded-lg border text-center font-semibold transition-colors truncate ${
                         gameState.leverHold.p1
                           ? 'bg-emerald-500/20 border-emerald-400 text-emerald-200'
                           : 'bg-zinc-900 border-zinc-700 text-zinc-400'
                       }`}
                     >
-                      Сясюня: {gameState.leverHold.p1 ? 'ТРИМАЄ!' : 'Очікування'}
+                      {playerNames.p1}: {gameState.leverHold.p1 ? 'ТРИМАЄ!' : 'Очікування'}
                     </div>
                     <div
-                      className={`px-3 py-2 rounded-lg border text-center font-semibold transition-colors ${
+                      className={`px-3 py-2 rounded-lg border text-center font-semibold transition-colors truncate ${
                         gameState.leverHold.p2
                           ? 'bg-emerald-500/20 border-emerald-400 text-emerald-200'
                           : 'bg-zinc-900 border-zinc-700 text-zinc-400'
                       }`}
                     >
-                      Юяся: {gameState.leverHold.p2 ? 'ТРИМАЄ!' : 'Очікування'}
+                      {playerNames.p2}: {gameState.leverHold.p2 ? 'ТРИМАЄ!' : 'Очікування'}
                     </div>
                   </div>
 
@@ -562,28 +724,25 @@ export const HotspotModal: React.FC<HotspotModalProps> = ({
                     </div>
                   </div>
 
-                  {/* Press-and-hold lever button */}
+                  {/* Mobile-safe press-and-hold lever button */}
                   <button
                     type="button"
                     onPointerDown={(e) => {
-                      e.currentTarget.setPointerCapture(e.pointerId);
+                      e.preventDefault();
+                      try {
+                        e.currentTarget.setPointerCapture(e.pointerId);
+                      } catch {
+                        // Ignore capture errors on synthetic events
+                      }
                       onSetLeverHolding(true, role);
                       if (soloTestMode) {
-                        onSetLeverHolding(true, role === 'p1' ? 'p2' : 'p1');
+                        onSetLeverHolding(true, otherRole);
                       }
                     }}
-                    onPointerUp={() => {
-                      onSetLeverHolding(false, role);
-                      if (soloTestMode) {
-                        onSetLeverHolding(false, role === 'p1' ? 'p2' : 'p1');
-                      }
-                    }}
-                    onPointerCancel={() => {
-                      onSetLeverHolding(false, role);
-                      if (soloTestMode) {
-                        onSetLeverHolding(false, role === 'p1' ? 'p2' : 'p1');
-                      }
-                    }}
+                    onPointerUp={releaseLever}
+                    onPointerCancel={releaseLever}
+                    onLostPointerCapture={releaseLever}
+                    onContextMenu={(e) => e.preventDefault()}
                     className={`w-full py-4 px-5 rounded-xl font-display text-xl tracking-wider uppercase select-none touch-none transition-all ${
                       gameState.leverHold[role]
                         ? 'bg-emerald-500 text-zinc-950 scale-[0.98] shadow-[0_0_24px_rgba(16,185,129,0.55)]'
