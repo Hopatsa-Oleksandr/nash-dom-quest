@@ -158,11 +158,16 @@ export const SceneArtwork: React.FC<SceneArtworkProps> = ({
 
   const keypadSolved = gameState.flags.includes('keypad_unlocked');
   const fuseInserted = gameState.flags.includes('fuse_inserted');
+  const protocolSolved = gameState.flags.includes('protocol_solved');
+  const act3Ready = keypadSolved && fuseInserted;
+  const leversUnlocked = act3Ready && protocolSolved;
   const fuseTaken = gameState.solvedHotspots.includes('hs-luggage-rack');
   const hatchOpened = gameState.solvedHotspots.includes('hs-seat-hatch');
   const trashTaken = gameState.solvedHotspots.includes('hs-trashbin');
-  const clueRead = gameState.scene1.clueRead;
+  const phoneUnlocked = gameState.scene1.phoneUnlocked;
   const hatchHasItem = Boolean(gameState.transferHatchItem);
+  const hatchIncomingForP2 = Boolean(gameState.transferHatchItem && gameState.transferHatchItem.from === 'p1');
+  const hatchIncomingForP1 = Boolean(gameState.transferHatchItem && gameState.transferHatchItem.from === 'p2');
 
   return (
     <div className="absolute inset-0 w-full h-full overflow-hidden bg-[#090b10] select-none pointer-events-none">
@@ -316,22 +321,37 @@ export const SceneArtwork: React.FC<SceneArtworkProps> = ({
             <circle cx="25" cy="98" r="4" fill="#ef4444" className="animate-led-flicker" />
           </g>
 
-          {/* Overhead Green "S-Bahn Stuttgart" Poster (inspired by user photo!) */}
-          <g transform="translate(650, 148)">
-            <rect width="380" height="58" rx="4" fill="#1b4328" stroke="#0f2918" strokeWidth="2" />
-            <rect x="12" y="10" width="52" height="12" rx="2" fill="#22c55e" opacity="0.85" />
-            <text x="16" y="19" fill="#052e16" fontSize="8" fontWeight="800" fontFamily="sans-serif">
+          {/* Carriage Plate near door (Hotspot x:25%, y:31% -> 400, 279) */}
+          <g transform="translate(335, 250)">
+            <rect width="128" height="48" rx="4" fill="#181d27" stroke="#64748b" strokeWidth="2" />
+            <rect x="6" y="6" width="24" height="14" rx="2" fill="#dc2626" />
+            <text x="18" y="16" fill="#fef2f2" fontSize="9" fontWeight="800" textAnchor="middle" fontFamily="sans-serif">
+              DB
+            </text>
+            <text x="64" y="34" fill="#e2e8f0" fontSize="13" fontWeight="700" textAnchor="middle" fontFamily="monospace">
+              Wagen Nr. 07
+            </text>
+          </g>
+
+          {/* Overhead Green Route Board above window (Hotspot x:52%, y:19% -> 832, 171) */}
+          <g transform="translate(648, 144)">
+            <rect width="380" height="62" rx="4" fill="#132b1c" stroke="#22c55e" strokeWidth="1.5" strokeOpacity="0.45" />
+            <rect x="12" y="10" width="56" height="14" rx="2" fill="#22c55e" opacity="0.9" />
+            <text x="17" y="20" fill="#052e16" fontSize="9" fontWeight="800" fontFamily="sans-serif">
               S-Bahn S2
             </text>
-            <text x="14" y="37" fill="#dcfce7" fontSize="13" fontWeight="700" fontFamily="sans-serif">
-              Ein Ticket, unzählige Möglichkeiten.
+            <text x="78" y="20" fill="#fbbf24" fontSize="11" fontWeight="700" fontFamily="monospace">
+              ЗУПИНКА · 23:40
             </text>
-            <text x="14" y="50" fill="#86efac" fontSize="8" opacity="0.75" fontFamily="sans-serif">
+            <text x="14" y="40" fill="#dcfce7" fontSize="13" fontWeight="700" fontFamily="sans-serif">
+              Stuttgart S2 · Аварійний режим
+            </text>
+            <text x="14" y="54" fill="#86efac" fontSize="8.5" opacity="0.8" fontFamily="sans-serif">
               S-Bahn Stuttgart · VVS Tarifzone
             </text>
             {/* Mini D-Ticket graphic on right */}
-            <rect x="322" y="8" width="44" height="42" rx="3" fill="#e4e4e7" opacity="0.9" />
-            <rect x="330" y="16" width="28" height="22" fill="#18181b" opacity="0.75" />
+            <rect x="322" y="10" width="44" height="42" rx="3" fill="#e4e4e7" opacity="0.9" />
+            <rect x="330" y="18" width="28" height="22" fill="#18181b" opacity="0.75" />
           </g>
 
           {/* Overhead Perforated Metal Luggage Rack */}
@@ -379,8 +399,8 @@ export const SceneArtwork: React.FC<SceneArtworkProps> = ({
             <rect width="102" height="66" rx="6" fill="#2c313b" stroke="#64748b" strokeWidth="2" />
             <rect x="6" y="6" width="90" height="12" rx="2" fill="#181b22" />
             <line x1="16" y1="36" x2="86" y2="36" stroke="#475569" strokeWidth="2" />
-            {/* Glint of screwdriver handle peeking out only after reading conductor SMS */}
-            {clueRead && !trashTaken && (
+            {/* Glint of screwdriver handle peeking out only after unlocking smartphone */}
+            {phoneUnlocked && !trashTaken && (
               <path d="M64 14 L78 4 L84 9 L70 18 Z" fill="#dc2626" stroke="#fca5a5" strokeWidth="1" />
             )}
           </g>
@@ -541,17 +561,17 @@ export const SceneArtwork: React.FC<SceneArtworkProps> = ({
               width="156"
               height="76"
               rx="8"
-              fill={hatchHasItem ? '#062c22' : '#181c24'}
-              stroke={hatchHasItem ? '#34d399' : '#38bdf8'}
-              strokeWidth={hatchHasItem ? '3' : '2'}
+              fill={hatchIncomingForP2 ? '#062c22' : '#181c24'}
+              stroke={hatchIncomingForP2 ? '#34d399' : '#38bdf8'}
+              strokeWidth={hatchIncomingForP2 ? '3' : '2'}
               opacity="0.95"
             />
             <rect x="14" y="14" width="128" height="28" rx="4" fill="#090c12" stroke={hatchHasItem ? '#10b981' : '#334155'} strokeWidth="1.5" />
             {hatchHasItem && (
               <rect x="46" y="21" width="64" height="14" rx="3" fill="#f59e0b" stroke="#fef08a" strokeWidth="1.2" />
             )}
-            <text x="78" y="61" fill={hatchHasItem ? '#6ee7b7' : '#7dd3fc'} fontSize="11" fontWeight="700" textAnchor="middle" fontFamily="monospace">
-              {hatchHasItem ? 'ОТРИМАНО ПРЕДМЕТ!' : 'ШЛЮЗ ПЕРЕДАЧІ'}
+            <text x="78" y="61" fill={hatchIncomingForP2 ? '#6ee7b7' : '#7dd3fc'} fontSize="11" fontWeight="700" textAnchor="middle" fontFamily="monospace">
+              {hatchIncomingForP2 ? 'ОТРИМАНО ПРЕДМЕТ!' : hatchHasItem ? 'У ШЛЮЗІ Є ПРЕДМЕТ' : 'ШЛЮЗ ПЕРЕДАЧІ'}
             </text>
           </g>
 
@@ -620,6 +640,50 @@ export const SceneArtwork: React.FC<SceneArtworkProps> = ({
             )}
           </g>
 
+          {/* BOTTOM-CENTER: ACT 3 PROTOCOL SWITCH PANEL (Hotspot x:43%, y:75% -> 688, 675) */}
+          <g transform="translate(568, 616)">
+            <rect
+              width="240"
+              height="118"
+              rx="10"
+              fill="#191e29"
+              stroke={protocolSolved ? '#10b981' : act3Ready ? '#f59e0b' : '#475569'}
+              strokeWidth="2.5"
+            />
+            <rect x="14" y="12" width="212" height="32" rx="4" fill="#090c12" stroke="#334155" strokeWidth="1.5" />
+            <text
+              x="120"
+              y="32"
+              fill={protocolSolved ? '#34d399' : act3Ready ? '#fbbf24' : '#64748b'}
+              fontSize="11"
+              fontWeight="700"
+              textAnchor="middle"
+              fontFamily="monospace"
+            >
+              {protocolSolved ? 'ПРОТОКОЛ DB · OK' : act3Ready ? 'ПОМИЛКА: B-4 | ФАЗА: 2' : 'ЩИТ ПРОТОКОЛУ · ОФЛАЙН'}
+            </text>
+            {/* 4 colored switches */}
+            {[
+              { x: 26, color: '#ef4444' },
+              { x: 76, color: '#3b82f6' },
+              { x: 126, color: '#eab308' },
+              { x: 176, color: '#22c55e' },
+            ].map((sw) => (
+              <rect
+                key={sw.x}
+                x={sw.x}
+                y="58"
+                width="36"
+                height="44"
+                rx="6"
+                fill={sw.color}
+                opacity={act3Ready ? 0.9 : 0.35}
+                stroke="#0f172a"
+                strokeWidth="2"
+              />
+            ))}
+          </g>
+
           {/* RIGHT: EMERGENCY LEVER A (Hotspot x:78%, y:52%) */}
           <g transform="translate(1152, 318)">
             <rect width="192" height="300" rx="12" fill="#1e2430" stroke="#64748b" strokeWidth="3" />
@@ -630,12 +694,12 @@ export const SceneArtwork: React.FC<SceneArtworkProps> = ({
             <rect x="82" y="76" width="28" height="170" rx="14" fill="#090c12" stroke="#475569" strokeWidth="2" />
             <g transform={`translate(0, ${gameState.leverHold.p2 ? 82 : 0})`}>
               <rect x="89" y="92" width="14" height="58" rx="6" fill="#94a3b8" />
-              <rect x="34" y="88" width="124" height="34" rx="10" fill={keypadSolved && fuseInserted ? '#dc2626' : '#64748b'} stroke="#fca5a5" strokeWidth="2.5" />
+              <rect x="34" y="88" width="124" height="34" rx="10" fill={leversUnlocked ? '#dc2626' : '#64748b'} stroke="#fca5a5" strokeWidth="2.5" />
               <text x="96" y="110" fill="#ffffff" fontSize="13" fontWeight="800" textAnchor="middle" fontFamily="monospace">
                 {gameState.leverHold.p2 ? 'ТРИМАЮ!' : 'ТЯГНИ ВНИЗ'}
               </text>
             </g>
-            <circle cx="96" cy="272" r="9" fill={keypadSolved && fuseInserted ? '#10b981' : '#ef4444'} />
+            <circle cx="96" cy="272" r="9" fill={leversUnlocked ? '#10b981' : '#ef4444'} />
           </g>
 
           <rect width="1600" height="900" fill="url(#redAlarmWash)" />
@@ -682,21 +746,21 @@ export const SceneArtwork: React.FC<SceneArtworkProps> = ({
           <path d="M0 0 H1600 V135 Q800 95 0 135 Z" fill="#171b24" />
           <rect x="0" y="690" width="1600" height="210" fill="#0f1218" />
 
-          {/* CENTER-TOP: OVERHEAD S-BAHN LED MATRIX DISPLAY (Hotspot x:48%, y:23%) */}
-          <g transform="translate(462, 138)">
+          {/* CENTER-TOP: OVERHEAD S-BAHN LED MATRIX DISPLAY (Hotspot x:48%, y:21%) */}
+          <g transform="translate(462, 128)">
             <rect width="612" height="132" rx="12" fill="#11141b" stroke="#475569" strokeWidth="4" />
             <rect x="16" y="16" width="580" height="100" rx="6" fill="#07090d" stroke="#1e293b" strokeWidth="2" />
             <g className="animate-led-flicker">
-              <text x="34" y="54" fill="#f59e0b" fontSize="21" fontWeight="700" fontFamily="monospace" letterSpacing="1">
-                S2 → 4   ·   Beutelsbach → 7
+              <text x="34" y="54" fill="#f59e0b" fontSize="20" fontWeight="700" fontFamily="monospace" letterSpacing="1">
+                S-BAHN S2 · ДІАГНОСТИКА МАРШРУТУ
               </text>
-              <text x="34" y="96" fill="#fbbf24" fontSize="21" fontWeight="700" fontFamily="monospace" letterSpacing="1">
-                Filderstadt → 1   ·   Stuttgart → 9
+              <text x="34" y="94" fill="#fbbf24" fontSize="18" fontWeight="700" fontFamily="monospace" letterSpacing="1">
+                КОД NOTBREMSE: [?] [?] [?] [?] · ВІДКРИЙТЕ ТАБЛО
               </text>
             </g>
           </g>
 
-          {/* LEFT: OVERHEAD LUGGAGE RACK WITH FUSE 32A (Hotspot x:24%, y:35%) */}
+          {/* LEFT: OVERHEAD LUGGAGE RACK WITH FUSE 32A TIED BY STEEL ZIP-TIE (Hotspot x:24%, y:34%) */}
           <g transform="translate(105, 290)">
             <rect x="30" y="34" width="14" height="32" fill="#334155" />
             <rect x="440" y="34" width="14" height="32" fill="#334155" />
@@ -709,6 +773,8 @@ export const SceneArtwork: React.FC<SceneArtworkProps> = ({
                 <rect x="56" y="8" width="14" height="22" rx="3" fill="#f59e0b" stroke="#fef08a" strokeWidth="1.5" />
                 <rect x="20" y="10" width="36" height="18" fill="#1e293b" stroke="#94a3b8" strokeWidth="1.5" />
                 <path d="M23 19 H30 L34 14 L42 24 L46 19 H53" stroke="#38bdf8" strokeWidth="2.2" fill="none" />
+                {/* Steel zip-tie binding the fuse */}
+                <rect x="34" y="5" width="8" height="28" rx="1" fill="#e2e8f0" stroke="#475569" strokeWidth="1.2" />
               </g>
             )}
           </g>
@@ -718,10 +784,27 @@ export const SceneArtwork: React.FC<SceneArtworkProps> = ({
           <circle cx="245" cy="495" r="3" fill="#fbbf24" opacity="0.65" />
           <circle cx="385" cy="482" r="2.5" fill="#fde68a" opacity="0.5" />
 
-          {/* Blue checkered seats on left */}
+          {/* Blue checkered seats on left + DB NOTFALL-HANDBUCH Manual (Hotspot x:31%, y:62%) */}
           <g transform="translate(155, 555)">
             <rect x="0" y="45" width="380" height="90" rx="10" fill="url(#p2Check)" stroke="#0f234c" strokeWidth="3" />
             <rect x="18" y="128" width="340" height="65" fill="#232934" stroke="#3f4756" strokeWidth="2" />
+            {/* Red DB Notfall-Handbuch Binder resting on seat */}
+            <g transform="translate(278, -6) rotate(6)">
+              <rect
+                width="106"
+                height="72"
+                rx="6"
+                fill="#7f1d1d"
+                stroke={act3Ready ? '#fbbf24' : '#94a3b8'}
+                strokeWidth="2.5"
+              />
+              <rect x="10" y="10" width="86" height="16" rx="2" fill="#dc2626" />
+              <text x="53" y="21" fill="#ffffff" fontSize="8" fontWeight="800" textAnchor="middle" fontFamily="monospace">
+                DB HANDBUCH
+              </text>
+              <line x1="16" y1="40" x2="90" y2="40" stroke="#fca5a5" strokeWidth="2" opacity="0.7" />
+              <line x1="16" y1="52" x2="72" y2="52" stroke="#fca5a5" strokeWidth="2" opacity="0.5" />
+            </g>
           </g>
 
           {/* CENTER: Sealed Inter-Car Partition Door + Transfer Hatch (Hotspot x:51%, y:67%) */}
@@ -739,13 +822,13 @@ export const SceneArtwork: React.FC<SceneArtworkProps> = ({
               width="172"
               height="70"
               rx="8"
-              fill={hatchHasItem ? '#062c22' : '#181c24'}
-              stroke={hatchHasItem ? '#34d399' : '#38bdf8'}
-              strokeWidth={hatchHasItem ? '3' : '2'}
+              fill={hatchIncomingForP1 ? '#062c22' : '#181c24'}
+              stroke={hatchIncomingForP1 ? '#34d399' : '#38bdf8'}
+              strokeWidth={hatchIncomingForP1 ? '3' : '2'}
             />
             <rect x="102" y="268" width="140" height="24" rx="4" fill="#090c12" stroke={hatchHasItem ? '#10b981' : '#334155'} strokeWidth="1.5" />
-            <text x="172" y="311" fill={hatchHasItem ? '#6ee7b7' : '#7dd3fc'} fontSize="11" fontWeight="700" textAnchor="middle" fontFamily="monospace">
-              {hatchHasItem ? 'У ШЛЮЗІ Є ПРЕДМЕТ' : 'ШЛЮЗ ПЕРЕДАЧІ → ТАМБУР А'}
+            <text x="172" y="311" fill={hatchIncomingForP1 ? '#6ee7b7' : '#7dd3fc'} fontSize="11" fontWeight="700" textAnchor="middle" fontFamily="monospace">
+              {hatchIncomingForP1 ? 'ОТРИМАНО ПРЕДМЕТ!' : hatchHasItem ? 'У ШЛЮЗІ Є ПРЕДМЕТ' : 'ШЛЮЗ ПЕРЕДАЧІ ↔ ТАМБУР А'}
             </text>
           </g>
 
@@ -759,12 +842,12 @@ export const SceneArtwork: React.FC<SceneArtworkProps> = ({
             <rect x="82" y="76" width="28" height="170" rx="14" fill="#090c12" stroke="#475569" strokeWidth="2" />
             <g transform={`translate(0, ${gameState.leverHold.p1 ? 82 : 0})`}>
               <rect x="89" y="92" width="14" height="58" rx="6" fill="#94a3b8" />
-              <rect x="34" y="88" width="124" height="34" rx="10" fill={keypadSolved && fuseInserted ? '#dc2626' : '#64748b'} stroke="#fca5a5" strokeWidth="2.5" />
+              <rect x="34" y="88" width="124" height="34" rx="10" fill={leversUnlocked ? '#dc2626' : '#64748b'} stroke="#fca5a5" strokeWidth="2.5" />
               <text x="96" y="110" fill="#ffffff" fontSize="13" fontWeight="800" textAnchor="middle" fontFamily="monospace">
                 {gameState.leverHold.p1 ? 'ТРИМАЮ!' : 'ТЯГНИ ВНИЗ'}
               </text>
             </g>
-            <circle cx="96" cy="272" r="9" fill={keypadSolved && fuseInserted ? '#10b981' : '#ef4444'} />
+            <circle cx="96" cy="272" r="9" fill={leversUnlocked ? '#10b981' : '#ef4444'} />
           </g>
 
           <rect width="1600" height="900" fill="url(#amberLedGlow)" />

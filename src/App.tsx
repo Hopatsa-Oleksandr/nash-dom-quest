@@ -156,6 +156,7 @@ export default function App() {
     pingMs,
     dispatchMutation,
     disconnectPeer,
+    reconnectPeer,
     startTalking,
     stopTalking,
     toggleMicMute,
@@ -577,7 +578,16 @@ export default function App() {
     emitPointerTap(x, y);
   };
 
-  // Hotspot action callbacks (strict progression + gender-accurate Ukrainian toasts)
+  // Hotspot action callbacks (strict 4-Act progression + gender-accurate Ukrainian toasts)
+  const handleUnlockPhone = (hotspot: HotspotConfig) => {
+    triggerHaptic(220);
+    dispatchMutation({
+      kind: 'UNLOCK_PHONE',
+      hotspotId: hotspot.id,
+      toast: `${activeName} ${g(activeGender, 'розблокував', 'розблокувала')} смартфон провідника — перевірте SMS і смітник!`,
+    });
+  };
+
   const handleCollectItem = (hotspot: HotspotConfig, itemId: string) => {
     triggerHaptic(50);
     const itemName = quest.items[itemId]?.name ?? 'Предмет';
@@ -595,15 +605,33 @@ export default function App() {
     if (!hotspot.givesItemId) return;
     triggerHaptic(300);
     const newItemName = quest.items[hotspot.givesItemId]?.name ?? 'Предмет';
+    const verb =
+      hotspot.requiredItemId === 'wire_cutters'
+        ? g(activeGender, 'перерізав', 'перерізала')
+        : g(activeGender, 'відкрив', 'відкрила');
     dispatchMutation({
       kind: 'UNLOCK_CONTAINER',
       hotspotId: hotspot.id,
       consumedItemId: hotspot.requiredItemId,
       givesItemId: hotspot.givesItemId,
       owner: currentScene.mode === 'shared' ? 'shared' : activeRole,
-      toast: `${activeName} ${g(activeGender, 'відкрив', 'відкрила')} люк! Отримано «${newItemName}»`,
+      toast: `${activeName} ${verb} стяжку! Отримано «${newItemName}»`,
     });
     setSelectedItemId(hotspot.givesItemId);
+  };
+
+  const handleUnlockHatchCombo = (hotspot: HotspotConfig) => {
+    if (!hotspot.requiredItemId || !hotspot.givesItemIds?.length) return;
+    triggerHaptic(300);
+    dispatchMutation({
+      kind: 'UNLOCK_HATCH_COMBO',
+      hotspotId: hotspot.id,
+      consumedItemId: hotspot.requiredItemId,
+      givesItemIds: hotspot.givesItemIds,
+      owner: currentScene.mode === 'shared' ? 'shared' : activeRole,
+      toast: `${activeName} ${g(activeGender, 'відкрив', 'відкрила')} кодовий люк! Отримано «Службовий ключ» та «Кусачки»`,
+    });
+    setSelectedItemId(hotspot.givesItemIds[0]);
   };
 
   const handleSolveKeypad = (hotspot: HotspotConfig) => {
@@ -624,9 +652,27 @@ export default function App() {
       hotspotId: hotspot.id,
       itemId: hotspot.requiredItemId,
       flag: 'fuse_inserted',
-      toast: `${activeName} ${g(activeGender, 'вставив', 'вставила')} запобіжник 32A! Перевірте аварійні важелі.`,
+      toast: `${activeName} ${g(activeGender, 'вставив', 'вставила')} «Запобіжник 32A» у щиток!`,
     });
     setSelectedItemId(null);
+  };
+
+  const handleSolveProtocol = (hotspot: HotspotConfig) => {
+    triggerHaptic(300);
+    dispatchMutation({
+      kind: 'SOLVE_PROTOCOL',
+      hotspotId: hotspot.id,
+      flag: 'protocol_solved',
+      toast: `${activeName} ${g(activeGender, 'виконав', 'виконала')} аварійний протокол DB! Акт 4 — тримайте важелі разом!`,
+    });
+  };
+
+  const handleRecordMistake = (toast?: string) => {
+    triggerHaptic([120, 60, 180]);
+    dispatchMutation({
+      kind: 'RECORD_MISTAKE',
+      toast,
+    });
   };
 
   const handlePutInHatch = (itemId: string) => {
@@ -644,7 +690,7 @@ export default function App() {
   const handleTakeFromHatch = () => {
     if (!gameState.transferHatchItem) return;
     triggerHaptic(120);
-    const takenId = gameState.transferHatchItem;
+    const takenId = gameState.transferHatchItem.id;
     dispatchMutation({
       kind: 'TAKE_FROM_HATCH',
       toRole: activeRole,
@@ -662,6 +708,9 @@ export default function App() {
       hotspotId: hotspot.id,
       targetSceneId: hotspot.targetSceneId,
       narration: buildTransitionNarration(playerNames, playerGenders),
+      assignItemsOnSplit: {
+        wire_cutters: 'p2',
+      },
     });
     setSelectedItemId(null);
   };
@@ -734,6 +783,7 @@ export default function App() {
           playerNames={playerNames}
           playerGenders={playerGenders}
           elapsedMs={gameState.elapsedMs}
+          mistakes={gameState.mistakes}
           chosenEndingId={gameState.victoryChoiceId}
           onChooseEnding={(choiceId) => dispatchMutation({ kind: 'CHOOSE_VICTORY', choiceId })}
           onRestart={() => {
@@ -799,14 +849,19 @@ export default function App() {
       <div className="absolute inset-0 z-10">
         {visibleHotspots.map((hs) => {
           const isSolved = gameState.solvedHotspots.includes(hs.id);
-          const isLeverActive =
-            hs.type === 'coop_lever' &&
+          const isAct3Ready =
             gameState.flags.includes('keypad_unlocked') &&
             gameState.flags.includes('fuse_inserted');
+          const isLeverActive =
+            hs.type === 'coop_lever' &&
+            isAct3Ready &&
+            gameState.flags.includes('protocol_solved');
+          const isAct3HotspotLocked =
+            (hs.type === 'protocol_panel' || hs.type === 'db_manual') && !isAct3Ready;
           const isIncomingHatchHotspot =
             hs.type === 'transfer_hatch' &&
             Boolean(gameState.transferHatchItem) &&
-            gameState.transferHatchFromRole !== activeRole;
+            gameState.transferHatchItem?.from !== activeRole;
 
           return (
             <button
@@ -826,14 +881,6 @@ export default function App() {
                 if (currentScene.mode === 'shared') {
                   emitPointerTap(hs.x, hs.y);
                 }
-                // Step 1 in Scene 1: reading smartphone SMS unlocks the trash bin
-                if (hs.id === 'hs-smartphone' && !gameState.scene1.clueRead) {
-                  dispatchMutation({
-                    kind: 'READ_SCENE1_CLUE',
-                    hotspotId: hs.id,
-                    toast: `${activeName} ${g(activeGender, 'прочитав', 'прочитала')} SMS від провідника — перевірте смітник!`,
-                  });
-                }
                 // Instant pickup if Transfer Hatch has an incoming item waiting for this player
                 if (isIncomingHatchHotspot) {
                   handleTakeFromHatch();
@@ -842,7 +889,9 @@ export default function App() {
                 setActiveHotspotId(hs.id);
               }}
               style={{ left: `${hs.x}%`, top: `${hs.y}%` }}
-              className="group absolute -translate-x-1/2 -translate-y-1/2 w-12 h-12 sm:w-14 sm:h-14 flex items-center justify-center focus:outline-none"
+              className={`group absolute -translate-x-1/2 -translate-y-1/2 w-12 h-12 sm:w-14 sm:h-14 flex items-center justify-center focus:outline-none ${
+                isAct3HotspotLocked ? 'opacity-55 hover:opacity-85' : ''
+              }`}
               aria-label={hs.label}
             >
               {/* Incoming Transfer Hatch Alert Badge */}
@@ -928,6 +977,10 @@ export default function App() {
     onSelectItem: setSelectedItemId,
     onPutInHatch: handlePutInHatch,
     onTakeFromHatch: handleTakeFromHatch,
+    onReconnect: () => {
+      triggerHaptic(50);
+      reconnectPeer();
+    },
     onRequestExit: () => {
       triggerHaptic(50);
       setExitConfirmOpen(true);
@@ -1099,10 +1152,14 @@ export default function App() {
           sceneMode={currentScene.mode}
           soloTestMode={session.soloTestMode}
           onClose={() => setActiveHotspotId(null)}
+          onUnlockPhone={handleUnlockPhone}
           onCollectItem={handleCollectItem}
           onUnlockContainer={handleUnlockContainer}
+          onUnlockHatchCombo={handleUnlockHatchCombo}
           onSolveKeypad={handleSolveKeypad}
           onInsertFuse={handleInsertFuse}
+          onSolveProtocol={handleSolveProtocol}
+          onRecordMistake={handleRecordMistake}
           onPutInHatch={handlePutInHatch}
           onTakeFromHatch={handleTakeFromHatch}
           onTriggerTransition={handleTriggerTransition}

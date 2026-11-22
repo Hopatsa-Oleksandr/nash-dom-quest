@@ -14,10 +14,10 @@ export function getGenderLabel(gender: PlayerGender): string {
 export function getQuickRadioPings(partnerGender: PlayerGender): string[] {
   return [
     'Прийом! Чуєш мене?',
-    'Подивись сюди!',
-    'Який код на табло?',
     'Передаю предмет у шлюз!',
-    `${g(partnerGender, 'Готовий', 'Готова')}? Тримаємо важелі разом!`,
+    'Який 4-значний код на табло?',
+    'Продиктуй статус електрощита (помилка, тиск, фаза)!',
+    `${g(partnerGender, 'Готовий', 'Готова')}? Тримаємо аварійні важелі разом!`,
   ];
 }
 
@@ -27,5 +27,5 @@ export function buildTransitionNarration(
 ): string {
   const p2Action = g(playerGenders.p2, 'залишився', 'залишилася');
   const p1Action = g(playerGenders.p1, 'опинився', 'опинилася');
-  return `Панель пікнула, пролунав хрипкий сигнал тривоги — і важкі червоні міжвагонні двері з гуркотом зачинилися прямо між вами! ${playerNames.p2} ${p2Action} у Тамбурі А біля щитка NOTBREMSE, а ${playerNames.p1} ${p1Action} у сусідньому Вагоні Б.`;
+  return `Панель пікнула, пролунав хрипкий сигнал тривоги — і важкі червоні міжвагонні двері з гуркотом зачинилися прямо між вами! ${playerNames.p2} ${p2Action} у Тамбурі А з «Кусачками» біля боксу NOTBREMSE, а ${playerNames.p1} ${p1Action} у сусідньому Вагоні Б.`;
 }

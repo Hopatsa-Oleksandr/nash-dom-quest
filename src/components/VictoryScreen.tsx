@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Bus, Clock, Footprints, LogOut, RotateCcw, Trophy } from 'lucide-react';
+import { AlertTriangle, Bus, Clock, Footprints, LogOut, RotateCcw, Trophy } from 'lucide-react';
 import { DialogueLine, PlayerGender, PlayerRole, QuestConfig } from '../types/game';
 import { PlayerAvatar } from './ItemIcons';
 import { g } from '../utils/ukrainianGrammar';
@@ -9,6 +9,7 @@ interface VictoryScreenProps {
   playerNames: Record<PlayerRole, string>;
   playerGenders: Record<PlayerRole, PlayerGender>;
   elapsedMs: number | null;
+  mistakes: number;
   chosenEndingId: string | null;
   onChooseEnding: (choiceId: string) => void;
   onRestart: () => void;
@@ -32,6 +33,7 @@ export const VictoryScreen: React.FC<VictoryScreenProps> = ({
   playerNames,
   playerGenders,
   elapsedMs,
+  mistakes,
   chosenEndingId,
   onChooseEnding,
   onRestart,
@@ -45,22 +47,25 @@ export const VictoryScreen: React.FC<VictoryScreenProps> = ({
     () => [
       {
         speaker: 'p2',
-        text: `Ура! Свіже нічне повітря! Я вже ${g(playerGenders.p2, 'думав', 'думала')}, що залишимося ночувати на цій колії до ранку!`,
+        text: `Ура! Свіже нічне повітря! Я вже ${g(playerGenders.p2, 'думав', 'думала')}, що ми залишимося ночувати у цьому вагоні №07 до ранку!`,
       },
       {
         speaker: 'p1',
-        text: `А я ${g(playerGenders.p1, 'попереджав', 'попереджала')}, що ніколи не можна їхати останнім S2 без запасної викрутки та запобіжника!`,
+        text: `А я ${g(playerGenders.p1, 'попереджав', 'попереджала')}, що без викрутки, кусачок і довідника DB Notfall-Handbuch у нічний S2 краще не сідати!`,
       },
       {
         speaker: 'p2',
-        text: `Зате ти так чітко ${g(playerGenders.p1, 'продиктував', 'продиктувала')} код по рації й ${g(playerGenders.p1, 'передав', 'передала')} запобіжник через шлюз — ми спрацювали як справжня команда!`,
+        text: `Зате як чітко ти ${g(playerGenders.p1, 'розшифрував', 'розшифрувала')} табло, ${g(playerGenders.p1, 'передав', 'передала')} запобіжник у шлюз і ${g(playerGenders.p1, 'провів', 'провела')} мене через ті 4 тумблери!`,
       },
       {
         speaker: 'p1',
-        text: `А ти без жодної помилки ${g(playerGenders.p2, 'ввів', 'ввела')} код у NOTBREMSE і ${g(playerGenders.p2, 'запустив', 'запустила')} аварійні важелі. Ну що, куди далі?`,
+        text:
+          mistakes === 0
+            ? `А ти без жодної помилки ${g(playerGenders.p2, 'впорався', 'впоралася')} з NOTBREMSE і щитом розблокування! Справжня команда. Ну що, куди далі?`
+            : `А ти ${g(playerGenders.p2, 'витримав', 'витримала')} навіть іскри на електрощиті й ${g(playerGenders.p2, 'дотиснув', 'дотиснула')} аварійні важелі! Ну що, куди далі?`,
       },
     ],
-    [playerGenders.p1, playerGenders.p2]
+    [mistakes, playerGenders.p1, playerGenders.p2]
   );
 
   const dynamicEpilogue: DialogueLine[] = useMemo(() => {
@@ -131,9 +136,9 @@ export const VictoryScreen: React.FC<VictoryScreenProps> = ({
           <p className="text-xs sm:text-sm text-zinc-400">{quest.victory.subtitle}</p>
         </div>
 
-        {/* Completion Speed Timer & Best Record */}
-        {elapsedMs !== null && (
-          <div className="flex flex-wrap items-center justify-center gap-x-5 gap-y-2 py-3 px-4 rounded-xl bg-zinc-900/80 border border-zinc-800">
+        {/* Completion Speed Timer, Mistakes Count & Best Record */}
+        <div className="flex flex-wrap items-center justify-center gap-x-5 gap-y-2 py-3 px-4 rounded-xl bg-zinc-900/80 border border-zinc-800">
+          {elapsedMs !== null && (
             <div className="flex items-center gap-2 text-sm text-zinc-200">
               <Clock className="w-4 h-4 text-emerald-400 shrink-0" />
               <span className="text-zinc-400">Час проходження:</span>
@@ -141,30 +146,42 @@ export const VictoryScreen: React.FC<VictoryScreenProps> = ({
                 {formatDuration(elapsedMs)}
               </span>
             </div>
-            {bestMs !== null && (
-              <>
-                <span className="hidden sm:inline text-zinc-700" aria-hidden="true">
-                  ·
-                </span>
-                <div className="flex items-center gap-1.5 text-xs sm:text-sm">
-                  <Trophy className="w-4 h-4 text-amber-400 shrink-0" />
-                  {isNewRecord ? (
-                    <span className="font-semibold text-amber-300">
-                      Новий рекорд швидкості!
-                    </span>
-                  ) : (
-                    <span className="text-zinc-400">
-                      Найкращий час:{' '}
-                      <span className="font-mono-tech font-bold text-amber-300">
-                        {formatDuration(bestMs)}
-                      </span>
-                    </span>
-                  )}
-                </div>
-              </>
-            )}
+          )}
+
+          <div className="flex items-center gap-1.5 text-xs sm:text-sm">
+            <AlertTriangle
+              className={`w-4 h-4 shrink-0 ${
+                mistakes === 0 ? 'text-emerald-400' : 'text-amber-400'
+              }`}
+            />
+            <span className="text-zinc-400">Помилок:</span>
+            <span
+              className={`font-mono-tech font-bold ${
+                mistakes === 0 ? 'text-emerald-300' : 'text-amber-300'
+              }`}
+            >
+              {mistakes}
+            </span>
           </div>
-        )}
+
+          {bestMs !== null && (
+            <div className="flex items-center gap-1.5 text-xs sm:text-sm">
+              <Trophy className="w-4 h-4 text-amber-400 shrink-0" />
+              {isNewRecord ? (
+                <span className="font-semibold text-amber-300">
+                  Новий рекорд швидкості!
+                </span>
+              ) : (
+                <span className="text-zinc-400">
+                  Найкращий час:{' '}
+                  <span className="font-mono-tech font-bold text-amber-300">
+                    {formatDuration(bestMs)}
+                  </span>
+                </span>
+              )}
+            </div>
+          )}
+        </div>
 
         {/* Short funny Ukrainian dialogue with dynamic gender agreement */}
         <div className="space-y-3">
@@ -276,7 +293,7 @@ export const VictoryScreen: React.FC<VictoryScreenProps> = ({
                 className="px-5 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-zinc-950 font-bold text-sm flex items-center gap-2 transition-colors whitespace-nowrap"
               >
                 <RotateCcw className="w-4 h-4" />
-                Пройти квест ще раз
+                Грати ще раз
               </button>
               <button
                 type="button"

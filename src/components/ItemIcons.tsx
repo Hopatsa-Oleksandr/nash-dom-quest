@@ -53,6 +53,43 @@ export const ItemIcon: React.FC<{ icon: ItemIconId; className?: string }> = ({
           />
         </svg>
       );
+    case 'wire_cutters':
+      return (
+        <svg viewBox="0 0 48 48" fill="none" className={className} aria-hidden="true">
+          {/* Diagonal steel cutter jaws */}
+          <path
+            d="M24 22L17 11C19.5 9.5 23 10.2 25 13L27.5 19"
+            fill="#94A3B8"
+            stroke="#F1F5F9"
+            strokeWidth="1.4"
+            strokeLinejoin="round"
+          />
+          <path
+            d="M24 22L31 11C28.5 9.5 25 10.2 23 13L20.5 19"
+            fill="#CBD5E1"
+            stroke="#F8FAFC"
+            strokeWidth="1.4"
+            strokeLinejoin="round"
+          />
+          {/* Insulated red ergonomic handles */}
+          <path
+            d="M22.5 24C19.5 29 15.5 34.5 12.5 38.5C11.4 40 9.2 40.1 8 38.8C6.9 37.6 7.1 35.6 8.3 34.4L19 23.5"
+            fill="#DC2626"
+            stroke="#FCA5A5"
+            strokeWidth="1.5"
+            strokeLinejoin="round"
+          />
+          <path
+            d="M25.5 24C28.5 29 32.5 34.5 35.5 38.5C36.6 40 38.8 40.1 40 38.8C41.1 37.6 40.9 35.6 39.7 34.4L29 23.5"
+            fill="#DC2626"
+            stroke="#FCA5A5"
+            strokeWidth="1.5"
+            strokeLinejoin="round"
+          />
+          {/* Pivot bolt */}
+          <circle cx="24" cy="22.5" r="3" fill="#475569" stroke="#F8FAFC" strokeWidth="1.4" />
+        </svg>
+      );
     case 'fuse':
       return (
         <svg viewBox="0 0 48 48" fill="none" className={className} aria-hidden="true">

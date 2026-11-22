@@ -74,6 +74,7 @@ export function usePeerMultiplayer({
   const [activeRemoteEffect, setActiveRemoteEffect] = useState<RemoteSceneEffect | null>(null);
   const [emergencySiren, setEmergencySiren] = useState<EmergencySirenAlert | null>(null);
   const [pingMs, setPingMs] = useState<number | null>(null);
+  const [reconnectNonce, setReconnectNonce] = useState<number>(0);
 
   const peerRef = useRef<Peer | null>(null);
   const dataConnRef = useRef<DataConnection | null>(null);
@@ -222,12 +223,18 @@ export function usePeerMultiplayer({
     switch (action.kind) {
       case 'COLLECT_ITEM':
       case 'UNLOCK_CONTAINER':
+      case 'UNLOCK_HATCH_COMBO':
       case 'TAKE_FROM_HATCH':
         playItemPickup();
         break;
+      case 'UNLOCK_PHONE':
       case 'SOLVE_KEYPAD':
       case 'INSERT_FUSE':
+      case 'SOLVE_PROTOCOL':
         playSuccessUnlock();
+        break;
+      case 'RECORD_MISTAKE':
+        playErrorBuzz();
         break;
       case 'PUT_IN_HATCH':
         playTransferWhoosh();
@@ -277,7 +284,7 @@ export function usePeerMultiplayer({
       if (msg.type === 'FULL_STATE') {
         const current = gameStateRef.current;
         const incoming = msg.state;
-        const merged = mergeRemoteGameState(current, incoming, role);
+        const merged = mergeRemoteGameState(current, incoming, role, quest);
         if (merged !== current) {
           gameStateRef.current = merged;
           setGameState(merged);
@@ -286,12 +293,19 @@ export function usePeerMultiplayer({
             setPartnerName(remoteProfile.name);
             setPartnerGender(remoteProfile.gender);
           }
-        } else if (
-          typeof incoming.stateVersion === 'number' &&
-          incoming.stateVersion < current.stateVersion
-        ) {
-          // Peer is behind our stateVersion — immediately push our newer full state back
-          sendMessage({ type: 'FULL_STATE', state: current }, true);
+        }
+        // Check if our merged state has progress/items the sender lacks; if so, push merged state back immediately
+        const senderMissingProgress =
+          merged.resetEpoch > (incoming.resetEpoch ?? 0) ||
+          merged.version > (incoming.version ?? 0) ||
+          merged.solvedHotspots.length > (incoming.solvedHotspots?.length ?? 0) ||
+          merged.flags.length > (incoming.flags?.length ?? 0) ||
+          merged.consumedItems.length > (incoming.consumedItems?.length ?? 0) ||
+          merged.mistakes > (incoming.mistakes ?? 0) ||
+          (merged.transferHatchItem !== null && incoming.transferHatchItem === null);
+
+        if (senderMissingProgress) {
+          sendMessage({ type: 'FULL_STATE', state: merged }, true);
         }
         return;
       }
@@ -312,9 +326,8 @@ export function usePeerMultiplayer({
           };
           gameStateRef.current = updated;
           setGameState(updated);
-          if (role === 'p1') {
-            sendMessage({ type: 'FULL_STATE', state: updated }, true);
-          }
+          // Immediately exchange full state on every hello/reconnect from both sides
+          sendMessage({ type: 'FULL_STATE', state: updated }, true);
           break;
         }
         case 'REQUEST_STATE': {
@@ -458,6 +471,44 @@ export function usePeerMultiplayer({
     setGameState(fresh);
   }, [quest]);
 
+  // Manual / forced reconnect: tears down PeerJS DataConnection + MediaConnection
+  // and re-establishes them WITHOUT losing local gameState progress or hatch items.
+  const reconnectPeer = useCallback(() => {
+    if (!roomId || soloTestMode) return;
+    if (reconnectTimerRef.current) {
+      window.clearInterval(reconnectTimerRef.current);
+      reconnectTimerRef.current = null;
+    }
+    if (mediaCallRef.current) {
+      try {
+        mediaCallRef.current.close();
+      } catch {
+        // ignore
+      }
+      mediaCallRef.current = null;
+    }
+    if (dataConnRef.current) {
+      try {
+        dataConnRef.current.close();
+      } catch {
+        // ignore
+      }
+      dataConnRef.current = null;
+    }
+    if (peerRef.current) {
+      try {
+        peerRef.current.destroy();
+      } catch {
+        // ignore
+      }
+      peerRef.current = null;
+    }
+    setPartnerOnline(false);
+    setPingMs(null);
+    setConnectionStatus('reconnecting');
+    setReconnectNonce((n) => n + 1);
+  }, [roomId, soloTestMode]);
+
   // Establish PeerJS P2P connection when roomId is active (and not in soloTestMode)
   useEffect(() => {
     if (!roomId || soloTestMode) {
@@ -471,7 +522,7 @@ export function usePeerMultiplayer({
     const myPeerId = `nashdom-quest-${cleanRoom}-${role}`;
     const targetPeerId = `nashdom-quest-${cleanRoom}-${otherRole}`;
 
-    setConnectionStatus('initializing');
+    setConnectionStatus(reconnectNonce > 0 ? 'reconnecting' : 'initializing');
 
     const peer = new Peer(myPeerId, {
       debug: 0,
@@ -498,16 +549,41 @@ export function usePeerMultiplayer({
         if (cancelled) return;
         setConnectionStatus('connected');
         setPartnerOnline(true);
-        conn.send({
-          type: 'PLAYER_HELLO',
-          role,
-          name: playerName,
-          gender: playerGender,
-        } as PeerMessage);
-        if (role === 'p1') {
+        // BOTH peers immediately exchange profile + full gameState on open/reconnect for union-merge
+        try {
+          conn.send({
+            type: 'PLAYER_HELLO',
+            role,
+            name: playerName,
+            gender: playerGender,
+          } as PeerMessage);
           conn.send({ type: 'FULL_STATE', state: gameStateRef.current } as PeerMessage);
-        } else {
           conn.send({ type: 'REQUEST_STATE' } as PeerMessage);
+        } catch {
+          // Heartbeat will retry
+        }
+
+        // Re-establish MediaConnection automatically if microphone stream was already active
+        if (localStreamRef.current && !peer.destroyed) {
+          if (mediaCallRef.current) {
+            try {
+              mediaCallRef.current.close();
+            } catch {
+              // ignore
+            }
+            mediaCallRef.current = null;
+          }
+          try {
+            const call = peer.call(targetPeerId, localStreamRef.current);
+            mediaCallRef.current = call;
+            call.on('close', () => {
+              if (mediaCallRef.current === call) {
+                mediaCallRef.current = null;
+              }
+            });
+          } catch {
+            // Will call on next PTT
+          }
         }
       };
 
@@ -521,8 +597,19 @@ export function usePeerMultiplayer({
 
       conn.on('close', () => {
         if (cancelled) return;
+        if (dataConnRef.current === conn) {
+          dataConnRef.current = null;
+        }
+        if (mediaCallRef.current) {
+          try {
+            mediaCallRef.current.close();
+          } catch {
+            // ignore
+          }
+          mediaCallRef.current = null;
+        }
         setPartnerOnline(false);
-        setConnectionStatus('waiting');
+        setConnectionStatus('reconnecting');
         setPingMs(null);
         setSpeakingState({ p1: false, p2: false });
         setGameState((prev) => {
@@ -544,13 +631,22 @@ export function usePeerMultiplayer({
     };
 
     const connectToHost = () => {
-      if (cancelled || peer.destroyed || !peer.open) return;
+      if (cancelled || peer.destroyed) return;
+      if (peer.disconnected) {
+        try {
+          peer.reconnect();
+        } catch {
+          // ignore
+        }
+        return;
+      }
+      if (!peer.open) return;
       if (dataConnRef.current?.open) return;
       try {
         const conn = peer.connect(targetPeerId, { reliable: true });
         attachConnection(conn);
       } catch {
-        // Retry on timer
+        // Retry on 3s interval
       }
     };
 
@@ -558,16 +654,28 @@ export function usePeerMultiplayer({
       if (cancelled) return;
       setConnectionStatus('waiting');
 
-      // Client (p2) initiates connection to Host (p1), retrying until host is ready
+      // Client (p2) dials Host (p1) immediately when peer signaling opens
       if (role === 'p2') {
         connectToHost();
-        reconnectTimerRef.current = window.setInterval(() => {
-          if (!dataConnRef.current?.open) {
-            connectToHost();
-          }
-        }, 3000);
       }
     });
+
+    // Automatic retry every 3 seconds whenever disconnected or waiting for partner
+    reconnectTimerRef.current = window.setInterval(() => {
+      if (cancelled || peer.destroyed) return;
+      if (peer.disconnected) {
+        setConnectionStatus('reconnecting');
+        try {
+          peer.reconnect();
+        } catch {
+          // ignore
+        }
+        return;
+      }
+      if (!dataConnRef.current?.open && role === 'p2') {
+        connectToHost();
+      }
+    }, 3000);
 
     peer.on('connection', (incomingConn) => {
       if (cancelled) return;
@@ -618,21 +726,38 @@ export function usePeerMultiplayer({
         waveformRafRef.current = null;
       }
       if (mediaCallRef.current) {
-        mediaCallRef.current.close();
+        try {
+          mediaCallRef.current.close();
+        } catch {
+          // ignore
+        }
         mediaCallRef.current = null;
       }
-      if (localStreamRef.current) {
-        localStreamRef.current.getTracks().forEach((t) => t.stop());
-        localStreamRef.current = null;
-      }
       if (dataConnRef.current) {
-        dataConnRef.current.close();
+        try {
+          dataConnRef.current.close();
+        } catch {
+          // ignore
+        }
         dataConnRef.current = null;
       }
-      peer.destroy();
+      try {
+        peer.destroy();
+      } catch {
+        // ignore
+      }
       peerRef.current = null;
     };
-  }, [roomId, role, otherRole, playerName, playerGender, soloTestMode, handleIncomingData]);
+  }, [
+    roomId,
+    role,
+    otherRole,
+    playerName,
+    playerGender,
+    soloTestMode,
+    handleIncomingData,
+    reconnectNonce,
+  ]);
 
   // 2-Second Heartbeat Full-State Sync so no item transfer or puzzle mutation packet is ever lost
   useEffect(() => {
@@ -1036,6 +1161,7 @@ export function usePeerMultiplayer({
     pingMs,
     dispatchMutation,
     disconnectPeer,
+    reconnectPeer,
     startTalking,
     stopTalking,
     toggleMicMute,

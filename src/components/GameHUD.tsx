@@ -14,6 +14,7 @@ import {
   MicOff,
   PackageCheck,
   Radio,
+  RefreshCw,
   Send,
   Siren,
   Terminal,
@@ -84,6 +85,7 @@ interface GameHUDProps {
   onSelectItem: (itemId: string | null) => void;
   onPutInHatch: (itemId: string) => void;
   onTakeFromHatch: () => void;
+  onReconnect: () => void;
   onRequestExit: () => void;
   onStartTalking: () => void;
   onStopTalking: () => void;
@@ -129,6 +131,7 @@ export const GameHUD: React.FC<GameHUDProps> = ({
   onSelectItem,
   onPutInHatch,
   onTakeFromHatch,
+  onReconnect,
   onRequestExit,
   onStartTalking,
   onStopTalking,
@@ -357,19 +360,34 @@ export const GameHUD: React.FC<GameHUDProps> = ({
   const incomingHatchItem =
     scene.mode === 'split' &&
     gameState.transferHatchItem &&
-    gameState.transferHatchFromRole !== role
-      ? quest.items[gameState.transferHatchItem] ?? null
+    gameState.transferHatchItem.from !== role
+      ? quest.items[gameState.transferHatchItem.id] ?? null
       : null;
 
   const outgoingHatchItem =
     scene.mode === 'split' &&
     gameState.transferHatchItem &&
-    gameState.transferHatchFromRole === role
-      ? quest.items[gameState.transferHatchItem] ?? null
+    gameState.transferHatchItem.from === role
+      ? quest.items[gameState.transferHatchItem.id] ?? null
       : null;
 
-  const currentTaskText = scene.taskByRole?.[role] ?? scene.task;
+  const currentTaskText =
+    scene.taskByActAndRole?.[gameState.act]?.[role] ??
+    scene.taskByRole?.[role] ??
+    scene.task;
   const quickRadioPings = getQuickRadioPings(playerGenders[otherRole]);
+
+  const showReconnectBanner =
+    !soloTestMode &&
+    (!browserOnline || !partnerOnline || connectionStatus !== 'connected');
+
+  const reconnectBannerText = !browserOnline
+    ? 'Немає інтернету — повторна спроба...'
+    : connectionStatus === 'error'
+      ? 'Збій каналу — натисніть «Перепідключити»'
+      : connectionStatus === 'reconnecting'
+        ? 'Зв’язок втрачено — автопідключення кожні 3 с...'
+        : 'Очікування підключення партнера...';
 
   const radioStatusText = soloTestMode
     ? 'Рація підключена (Соло-тест)'
@@ -1121,7 +1139,7 @@ export const GameHUD: React.FC<GameHUDProps> = ({
           >
             <div className="flex items-center justify-between gap-2 text-[10px] font-medium">
               <span className={emergencySiren ? 'text-red-300' : 'text-zinc-400'}>
-                Завдання · {scene.mode === 'shared' ? 'Спільний вагон' : 'Розділені вагони'}
+                Акт {gameState.act}/4 · {scene.mode === 'shared' ? 'Спільний вагон' : 'Розділені вагони'}
               </span>
               {locationLabel && (
                 <span className="font-mono-tech text-zinc-400 truncate max-w-[45%]">
@@ -1133,6 +1151,28 @@ export const GameHUD: React.FC<GameHUDProps> = ({
               {currentTaskText}
             </p>
           </div>
+
+          {/* Compact P2P Reconnect Banner (Portrait) */}
+          {showReconnectBanner && (
+            <div
+              className="flex items-center justify-between gap-2 rounded-xl bg-amber-950/75 border border-amber-500/60 px-2.5 py-1.5 text-[11px] text-amber-100"
+              role="status"
+              aria-live="polite"
+            >
+              <div className="flex items-center gap-1.5 min-w-0">
+                <WifiOff className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                <span className="truncate">{reconnectBannerText}</span>
+              </div>
+              <button
+                type="button"
+                onClick={onReconnect}
+                className="px-2.5 py-1 rounded-lg bg-amber-400 hover:bg-amber-300 text-zinc-950 font-bold text-[11px] flex items-center gap-1 shrink-0 transition-colors whitespace-nowrap"
+              >
+                <RefreshCw className="w-3 h-3" />
+                <span>Перепідключити</span>
+              </button>
+            </div>
+          )}
         </header>
 
         {/* MIDDLE SECTION: Strictly 16:9 Interactive Scene centered vertically */}
@@ -1391,12 +1431,34 @@ export const GameHUD: React.FC<GameHUDProps> = ({
                 emergencySiren ? 'text-red-300' : 'text-zinc-400'
               }`}
             >
-              Завдання · {scene.mode === 'shared' ? 'Спільний вагон' : 'Розділені вагони'}
+              Акт {gameState.act}/4 · {scene.mode === 'shared' ? 'Спільний вагон' : 'Розділені вагони'}
             </p>
             <p className="text-xs sm:text-sm font-bold text-zinc-50 leading-snug mt-0.5">
               {currentTaskText}
             </p>
           </div>
+
+          {/* Compact P2P Reconnect Banner (Landscape) */}
+          {showReconnectBanner && (
+            <div
+              className="flex items-center justify-between gap-2 rounded-xl bg-amber-950/88 backdrop-blur-md border border-amber-500/65 px-3 py-1.5 text-xs text-amber-100 shadow-lg"
+              role="status"
+              aria-live="polite"
+            >
+              <div className="flex items-center gap-1.5 min-w-0">
+                <WifiOff className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                <span className="truncate">{reconnectBannerText}</span>
+              </div>
+              <button
+                type="button"
+                onClick={onReconnect}
+                className="px-2.5 py-1 rounded-lg bg-amber-400 hover:bg-amber-300 text-zinc-950 font-bold text-[11px] flex items-center gap-1 shrink-0 transition-colors whitespace-nowrap"
+              >
+                <RefreshCw className="w-3 h-3" />
+                <span>Перепідключити</span>
+              </button>
+            </div>
+          )}
         </div>
 
         {/* Top-Right: Two Circular Player Avatars + Exit (✕) + Emergency Siren + Mic Muted */}
